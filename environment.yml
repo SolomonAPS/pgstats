@@ -1,0 +1,21 @@
+name: many-stats
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.8
+  - numpy>=1.20.0
+  - scipy>=1.7.0
+  - pandas>=1.3.0
+  - xarray>=0.20.0
+  - dask>=2021.0.0
+  - zarr>=2.10.0
+  - numba>=0.56.0
+  - matplotlib
+  - jupyter
+  - pytest
+  - black
+  - flake8
+  - pip
+  - pip:
+    - sgkit>=0.15.0
