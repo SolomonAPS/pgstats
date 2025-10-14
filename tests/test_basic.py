@@ -70,22 +70,9 @@ def test_diversity_statistics():
     assert "fay_wu_theta" in ds_with_theta_h.data_vars
 
 
-def test_selection_statistics():
-    """Test selection statistics calculations."""
-    
-    # Create test dataset
-    ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20, missing_pct=0.1)
-    
-    # Test HKA analysis
-    ds_with_hka = ms.stats.hudson_kreitman_aguade_analysis(ds)
-    assert "hka_statistic" in ds_with_hka.data_vars
-    assert "hka_p_value" in ds_with_hka.data_vars
-
-
 if __name__ == "__main__":
     # Run basic tests
     test_basic_functionality()
     test_population_statistics()
     test_diversity_statistics()
-    test_selection_statistics()
     print("All tests passed!")

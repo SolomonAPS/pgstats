@@ -12,10 +12,16 @@ dependencies:
   - zarr>=2.10.0
   - numba>=0.56.0
   - matplotlib
+  - seaborn
   - jupyter
+  - notebook
+  - ipykernel
   - pytest
+  - pytest-cov
   - black
   - flake8
+  - mypy
   - pip
   - pip:
-    - sgkit>=0.15.0
+    - sgkit>=0.10.0
+    - bio2zarr>=0.1.6

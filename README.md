@@ -1,13 +1,17 @@
 # Many-Stats
 
-A comprehensive statistical genomics toolkit built on top of sgkit with custom statistical functions implemented using Numba for high performance.
+A comprehensive statistical genomics toolkit built on top of [sgkit](https://github.com/pystatgen/sgkit) with custom statistical functions implemented using Numba for high performance.
+
+**Built with:**
+- [sgkit](https://github.com/pystatgen/sgkit) - Scalable genetics toolkit for large-scale genomic data
+- [sgkit documentation](https://pystatgen.github.io/sgkit/latest/) - Official sgkit documentation
 
 ## Features
 
 - **Built on sgkit**: Leverages sgkit's efficient handling of genetic data and cloud-native formats
 - **Numba-optimized**: Custom statistical functions implemented with Numba JIT compilation for high performance
 - **Population genetics statistics**: Tajima's D, Fu and Li's statistics, and other neutrality tests
-- **Diversity measures**: Nucleotide diversity (π), Watterson's theta, Fay and Wu's theta
+- **Theta estimators**: theta_pi (θπ - nucleotide diversity), theta_w (θw - Watterson's), theta_h (θh - Fay and Wu's)
 - **Selection tests**: McDonald-Kreitman test, Hudson-Kreitman-Aguade test
 - **Scalable**: Designed to work with large datasets using Dask for parallel processing
 - **Extensible**: Easy to add custom statistics using Numba
@@ -32,8 +36,33 @@ pip install -e .
 - zarr >= 2.10.0
 - scipy >= 1.7.0
 - pandas >= 1.3.0
+- bio2zarr >= 0.3.0 (for VCF loading)
 
 ## Quick Start
+
+### Loading VCF Data
+
+```python
+import many_stats as ms
+from many_stats.io.loaders import load_vcf_simple
+
+# Load VCF data using vcf2zarr
+ds = load_vcf_simple("your_data.vcf.gz")
+
+# Calculate population statistics
+ds = ms.stats.tajima_d(ds)
+ds = ms.stats.fu_li_d(ds)
+ds = ms.stats.fu_li_f(ds)
+
+# Calculate diversity statistics
+ds = ms.stats.nucleotide_diversity(ds)
+ds = ms.stats.theta_w(ds)
+
+# Save results
+ms.io.save_results(ds, "results.zarr")
+```
+
+### Using Simulated Data
 
 ```python
 import many_stats as ms
@@ -49,7 +78,7 @@ ds = ms.stats.fu_li_f(ds)
 
 # Calculate diversity statistics
 ds = ms.stats.nucleotide_diversity(ds)
-ds = ms.stats.watterson_theta(ds)
+ds = ms.stats.theta_w(ds)
 
 # Save results
 ms.io.save_results(ds, "results.zarr")
@@ -65,9 +94,9 @@ ms.io.save_results(ds, "results.zarr")
 
 ### Diversity Statistics
 
-- **Nucleotide diversity (π)**: Average number of pairwise differences
-- **Watterson's theta (θw)**: Based on number of segregating sites
-- **Fay and Wu's theta (θh)**: Based on high-frequency derived alleles
+- **theta_pi (θπ)**: Nucleotide diversity based on average pairwise differences
+- **theta_w (θw)**: Watterson's estimator based on number of segregating sites
+- **theta_h (θh)**: Fay and Wu's estimator based on high-frequency derived alleles
 
 ### Selection Statistics
 
@@ -145,7 +174,28 @@ Many-stats supports various genetic data formats through sgkit:
 
 - **Zarr**: Cloud-native format for large datasets
 - **PLINK**: Standard format (.bed, .bim, .fam files)
-- **VCF**: Via bio2zarr conversion
+- **VCF**: Via bio2zarr conversion (vcf2zarr)
+
+### VCF Loading with vcf2zarr
+
+The package includes built-in support for loading VCF files using the bio2zarr package:
+
+```python
+from many_stats.io.loaders import load_vcf_simple, check_bio2zarr_available
+
+# Check if bio2zarr is available
+if check_bio2zarr_available():
+    # Load VCF data
+    ds = load_vcf_simple("your_data.vcf.gz")
+else:
+    print("Install bio2zarr: pip install bio2zarr")
+```
+
+The VCF loading process uses bio2zarr's Python API:
+1. Convert VCF directly to Zarr format using `bio2zarr.vcf.convert()`
+2. Load the resulting Zarr dataset with sgkit
+
+This approach provides reliable conversion and efficient loading of VCF data with better error handling and progress reporting.
 
 ## Performance
 
@@ -188,6 +238,23 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Built on top of [sgkit](https://github.com/pystatgen/sgkit)
-- Statistical formulas from Wakeley (2009) Coalescent Theory
-- Inspired by the pylibseq-anator project
+- Built on top of [sgkit](https://github.com/pystatgen/sgkit) - Special thanks to the sgkit team for creating an excellent foundation
+- Statistical formulas from Wakeley (2009) *Coalescent Theory: An Introduction*
+- Inspired by pylibseq and other population genetics tools
+
+## Additional Resources
+
+### sgkit Resources
+- [sgkit GitHub Repository](https://github.com/pystatgen/sgkit)
+- [sgkit Documentation](https://pystatgen.github.io/sgkit/latest/)
+- [sgkit Tutorials](https://pystatgen.github.io/sgkit/latest/tutorials.html)
+- [bio2zarr Documentation](https://github.com/sgkit-dev/bio2zarr) - For VCF conversion
+
+### Related Tools
+- [scikit-allel](https://scikit-allel.readthedocs.io/) - Python package for exploring and analyzing genetic variation data
+- [tskit](https://tskit.dev/) - Tree sequence toolkit
+- [msprime](https://tskit.dev/msprime/) - Population genetics simulator
+
+### Learning Resources
+- Wakeley J. (2009) *Coalescent Theory: An Introduction*. Roberts & Company Publishers.
+- Nielsen R. & Slatkin M. (2013) *An Introduction to Population Genetics: Theory and Applications*. Sinauer Associates.

@@ -1,0 +1,649 @@
+"""
+Core data structures and analysis framework for population genetics statistics.
+
+This module provides the main classes for managing genomic data and running
+windowed and non-windowed population genetics statistics while accounting for
+missing data and callable sites. Built on top of sgkit's windowing capabilities.
+"""
+
+import numpy as np
+import xarray as xr
+import pandas as pd
+from pathlib import Path
+from typing import Optional, Union, List, Dict, Any, Tuple
+import dask.array as da
+from dataclasses import dataclass
+import sgkit as sg
+
+from many_stats.io.loaders import load_vcf_simple
+from many_stats.stats.sfs_statistics import (
+    tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
+    theta_pi, theta_w, theta_h, theta_l
+)
+from many_stats.stats.ld_statistics import (
+    calculate_ld_matrix, calculate_windowed_ld
+)
+
+
+@dataclass
+class WindowConfig:
+    """Configuration for windowed analysis - minimal CLI approach."""
+    window_size: Optional[int] = None  # Window size in base pairs (None = genome-wide)
+    step_size: Optional[int] = None  # Step size (defaults to window_size)
+    start: Optional[int] = None  # Start position for region analysis
+    end: Optional[int] = None  # End position for region analysis
+    min_variants: int = 5  # Minimum variants per window
+    
+    def __post_init__(self):
+        if self.window_size is not None and self.step_size is None:
+            self.step_size = self.window_size
+
+
+@dataclass
+class CallableSitesConfig:
+    """Configuration for callable sites handling."""
+    bed_file: Optional[str] = None
+    bed_format: str = "non_callable"  # "non_callable" or "callable"
+    max_missing: float = 0.0
+    min_coverage: Optional[int] = None
+    quality_threshold: Optional[float] = None
+
+
+class GenomicDataset:
+    """
+    Main class for managing genomic data and running population genetics analyses.
+    
+    This class leverages sgkit's built-in windowing capabilities combined with
+    callable sites functionality for comprehensive population genetics analysis.
+    """
+    
+    def __init__(self, 
+                 data_source: Union[str, xr.Dataset],
+                 callable_config: Optional[CallableSitesConfig] = None,
+                 window_config: Optional[WindowConfig] = None):
+        """
+        Initialize GenomicDataset.
+        
+        Args:
+            data_source: Path to VCF file or existing sgkit Dataset
+            callable_config: Configuration for callable sites handling
+            window_config: Configuration for windowed analysis
+        """
+        self.callable_config = callable_config or CallableSitesConfig()
+        self.window_config = window_config or WindowConfig()
+        
+        # Load data
+        if isinstance(data_source, str):
+            data_path = Path(data_source)
+            if data_path.suffix in ['.zarr'] or 'zarr' in str(data_path):
+                # Load Zarr dataset
+                import sgkit as sg
+                self.dataset = sg.load_dataset(data_source)
+            else:
+                # Load VCF
+                self.dataset = load_vcf_simple(data_source)
+        else:
+            self.dataset = data_source
+        
+        # Initialize callable sites tracking
+        self.callable_sites = None
+        self.non_callable_mask = None
+        
+        # Initialize window information
+        self.windowed_dataset = None
+        self.window_stats = {}
+        
+        # Validate dataset
+        self._validate_dataset()
+        
+        # Process callable sites if configured
+        if self.callable_config.bed_file:
+            self._load_callable_sites()
+    
+    def _validate_dataset(self):
+        """Validate that the dataset has required fields."""
+        required_vars = ['call_genotype', 'variant_position', 'variant_contig']
+        missing_vars = [var for var in required_vars if var not in self.dataset.data_vars]
+        
+        if missing_vars:
+            raise ValueError(f"Dataset missing required variables: {missing_vars}")
+        
+        # Check for missing data handling
+        if 'call_genotype_mask' not in self.dataset.data_vars:
+            print("Warning: No genotype mask found. Missing data will be inferred from genotype values.")
+    
+    def _load_callable_sites(self):
+        """Load callable sites from BED file and mask non-callable sites."""
+        if not self.callable_config.bed_file:
+            return
+        
+        bed_path = Path(self.callable_config.bed_file)
+        if not bed_path.exists():
+            raise FileNotFoundError(f"BED file not found: {bed_path}")
+        
+        # Load BED file
+        bed_df = pd.read_csv(
+            bed_path, 
+            sep='\t', 
+            names=['chrom', 'start', 'end'],
+            usecols=[0, 1, 2]
+        )
+        
+        # Create non-callable sites mask and apply it
+        self._apply_callable_sites_mask(bed_df)
+        
+        print(f"Applied callable sites mask: {self.callable_sites:,} callable sites")
+    
+    def _apply_callable_sites_mask(self, bed_df: pd.DataFrame):
+        """
+        Apply callable sites mask by setting non-callable sites to -1 (missing).
+        
+        BED file format: 0-based start (inclusive), 0-based end (exclusive)
+        Standard BED format uses 0-based coordinates where:
+        - start: 0-based position (inclusive)
+        - end: 0-based position (exclusive)
+        
+        VCF positions are 1-based, so we need to handle the conversion properly.
+        
+        Args:
+            bed_df: DataFrame with BED regions
+        """
+        positions = self.dataset.variant_position.values
+        contigs = self.dataset.variant_contig.values
+        
+        # Get contig names
+        contig_names = self.dataset.contig_id.values
+        
+        # Create mask for callable sites (True = callable)
+        if self.callable_config.bed_format == "non_callable":
+            callable_mask = np.ones(len(positions), dtype=bool)  # Start with all sites callable
+        elif self.callable_config.bed_format == "callable":
+            callable_mask = np.zeros(len(positions), dtype=bool)  # Start with no sites callable
+        else:
+            raise ValueError(f"Unknown bed_format: {self.callable_config.bed_format}")
+        
+        for _, row in bed_df.iterrows():
+            chrom = row['chrom']
+            start = row['start']  # 0-based start (inclusive)
+            end = row['end']      # 0-based end (exclusive)
+            
+            # Find matching contig
+            contig_idx = None
+            for i, contig_name in enumerate(contig_names):
+                if str(contig_name) == str(chrom):
+                    contig_idx = i
+                    break
+            
+            if contig_idx is not None:
+                # Find variants in this region
+                region_mask = (contigs == contig_idx) & (positions >= start) & (positions < end)
+                
+                if self.callable_config.bed_format == "non_callable":
+                    # BED defines non-callable regions (current behavior)
+                    callable_mask &= ~region_mask  # Mark these regions as non-callable
+                elif self.callable_config.bed_format == "callable":
+                    # BED defines callable regions (new behavior)
+                    callable_mask |= region_mask   # Mark these regions as callable
+        
+        # Set non-callable sites to -1 (missing) in genotype data
+        genotypes = self.dataset.call_genotype.values.copy()
+        non_callable_mask = ~callable_mask
+        
+        # Set all genotypes at non-callable sites to -1
+        genotypes[non_callable_mask, :, :] = -1
+        
+        # Update the dataset
+        self.dataset = self.dataset.assign(call_genotype=(['variants', 'samples', 'ploidy'], genotypes))
+        
+        # Update the call_genotype_mask to reflect the new missing data
+        # Create mask where True = missing, False = callable
+        updated_mask = (genotypes == -1)
+        self.dataset = self.dataset.assign(call_genotype_mask=(['variants', 'samples', 'ploidy'], updated_mask))
+        
+        # Store information
+        self.non_callable_mask = non_callable_mask
+        self.callable_sites = np.sum(callable_mask)
+        
+        print(f"Masked {np.sum(non_callable_mask):,} non-callable sites as missing data")
+    
+    def filter_missing_data(self, max_missing: Optional[float] = None):
+        """
+        Filter variants based on missing data threshold.
+        
+        Args:
+            max_missing: Maximum proportion of missing data allowed
+        """
+        if max_missing is None:
+            max_missing = self.callable_config.max_missing
+        
+        if max_missing <= 0:
+            return
+        
+        # Calculate missing data proportion per variant
+        genotypes = self.dataset.call_genotype.values
+        n_samples = genotypes.shape[1]
+        
+        # Count missing genotypes (assuming -1 or missing values)
+        missing_counts = np.sum(genotypes == -1, axis=(1, 2))
+        missing_prop = missing_counts / (n_samples * genotypes.shape[2])
+        
+        # Create filter mask
+        filter_mask = missing_prop <= max_missing
+        
+        # Apply filter
+        self.dataset = self.dataset.isel(variants=filter_mask)
+        
+        # Update non-callable mask if it exists
+        if self.non_callable_mask is not None:
+            self.non_callable_mask = self.non_callable_mask[filter_mask]
+            self.callable_sites = np.sum(~self.non_callable_mask)
+        
+        print(f"Filtered to {np.sum(filter_mask):,} variants (removed {np.sum(~filter_mask):,} with >{max_missing:.1%} missing)")
+    
+    def create_windows(self):
+        """
+        Create genomic windows using sgkit's windowing functions.
+        
+        Automatically chooses between genome-wide and windowed analysis based on configuration.
+        """
+        window_size = self.window_config.window_size
+        step_size = self.window_config.step_size
+        start = self.window_config.start
+        end = self.window_config.end
+        
+        if window_size is None and start is None and end is None:
+            # Genome-wide analysis
+            print("Creating genome-wide window")
+            self.windowed_dataset = sg.window_by_genome(self.dataset)
+        else:
+            # Windowed analysis
+            if start is not None and end is not None:
+                print(f"Creating windows for region {start}-{end}")
+                # Filter dataset to region first
+                region_dataset = self._filter_to_region(start, end)
+                self.windowed_dataset = sg.window_by_position(
+                    region_dataset,
+                    size=window_size or 1000,
+                    step=step_size or window_size or 1000
+                )
+            else:
+                print(f"Creating position-based windows with size {window_size}")
+                self.windowed_dataset = sg.window_by_position(
+                    self.dataset,
+                    size=window_size,
+                    step=step_size
+                )
+        
+        n_windows = len(self.windowed_dataset.windows)
+        print(f"Created {n_windows} windows")
+        
+        # Filter windows by minimum variants if specified
+        if self.window_config.min_variants > 1:
+            self._filter_windows_by_variants()
+    
+    def _filter_windows_by_variants(self):
+        """Filter windows to only include those with minimum number of variants."""
+        if self.windowed_dataset is None:
+            return
+        
+        # Count variants per window
+        window_starts = self.windowed_dataset.window_start.values
+        window_stops = self.windowed_dataset.window_stop.values
+        n_variants_per_window = window_stops - window_starts
+        
+        # Create filter mask
+        filter_mask = n_variants_per_window >= self.window_config.min_variants
+        
+        # Apply filter
+        self.windowed_dataset = self.windowed_dataset.isel(windows=filter_mask)
+        
+        n_filtered = np.sum(filter_mask)
+        n_removed = len(filter_mask) - n_filtered
+        print(f"Filtered to {n_filtered} windows (removed {n_removed} with <{self.window_config.min_variants} variants)")
+    
+    def _filter_to_region(self, start: int, end: int) -> xr.Dataset:
+        """Filter dataset to a specific genomic region."""
+        positions = self.dataset.variant_position.values
+        region_mask = (positions >= start) & (positions <= end)
+        
+        filtered_dataset = self.dataset.isel(variants=region_mask)
+        print(f"Filtered to region {start}-{end}: {np.sum(region_mask)} variants")
+        
+        return filtered_dataset
+    
+    def calculate_windowed_stats(self, 
+                               stats: List[str] = None,
+                               use_callable_sites: bool = True) -> xr.Dataset:
+        """
+        Calculate statistics for each window using sgkit's windowed dataset.
+        
+        Args:
+            stats: List of statistics to calculate
+            use_callable_sites: Whether to account for callable sites
+            
+        Returns:
+            Dataset with windowed statistics
+        """
+        if self.windowed_dataset is None:
+            raise ValueError("Windows not created. Call create_windows() first.")
+        
+        if stats is None:
+            stats = ['tajima_d', 'theta_pi', 'theta_w', 'theta_h']
+        
+        # Start with the windowed dataset
+        result_dataset = self.windowed_dataset.copy()
+        
+        # Calculate each statistic
+        for stat in stats:
+            if stat == 'tajima_d':
+                stat_ds = tajima_d(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
+                stat_ds = theta_pi(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat in ['theta_w', 'watterson_theta']:
+                stat_ds = theta_w(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat in ['theta_h', 'fay_wu_theta']:
+                stat_ds = theta_h(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'theta_l':
+                stat_ds = theta_l(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'fu_li_d':
+                stat_ds = fu_li_d(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'fu_li_f':
+                stat_ds = fu_li_f(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'fu_li_d_unfolded':
+                stat_ds = fu_li_d_unfolded(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'fu_li_f_unfolded':
+                stat_ds = fu_li_f_unfolded(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'zeng_e':
+                stat_ds = zeng_e(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'ld_matrix':
+                # Calculate LD matrix for each window
+                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                result_dataset = result_dataset.merge(ld_ds)
+            elif stat == 'ld_d':
+                # Calculate D values for each window
+                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                result_dataset = result_dataset.merge(ld_ds)
+            elif stat == 'ld_d_prime':
+                # Calculate D' values for each window
+                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                result_dataset = result_dataset.merge(ld_ds)
+            elif stat == 'ld_r_squared':
+                # Calculate r² values for each window
+                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                result_dataset = result_dataset.merge(ld_ds)
+        
+        # Note: Callable sites are now handled by setting non-callable sites to -1
+        # sgkit's statistics will automatically account for missing data
+        
+        # Normalize theta estimators by callable sites
+        result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
+        
+        self.window_stats = result_dataset
+        return result_dataset
+    
+    
+    def calculate_genome_wide_stats(self, stats: List[str] = None) -> Dict[str, float]:
+        """
+        Calculate genome-wide statistics.
+        
+        Args:
+            stats: List of statistics to calculate
+            
+        Returns:
+            Dictionary with genome-wide statistics
+        """
+        if stats is None:
+            stats = ['tajima_d', 'theta_pi', 'theta_w', 'theta_h']
+        
+        results = {}
+        
+        for stat in stats:
+            if stat == 'tajima_d':
+                result_ds = tajima_d(self.dataset)
+                results[stat] = np.mean(result_ds['tajima_d'].values)
+            elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
+                result_ds = theta_pi(self.dataset)
+                results[stat] = np.mean(result_ds['theta_pi'].values)
+            elif stat in ['theta_w', 'watterson_theta']:
+                result_ds = theta_w(self.dataset)
+                results[stat] = np.mean(result_ds['theta_w'].values)
+            elif stat in ['theta_h', 'fay_wu_theta']:
+                result_ds = theta_h(self.dataset)
+                results[stat] = np.mean(result_ds['theta_h'].values)
+            elif stat == 'theta_l':
+                result_ds = theta_l(self.dataset)
+                results[stat] = np.mean(result_ds['theta_l'].values)
+            elif stat == 'fu_li_d':
+                result_ds = fu_li_d(self.dataset)
+                results[stat] = np.mean(result_ds['fu_li_d_star'].values)
+            elif stat == 'fu_li_f':
+                result_ds = fu_li_f(self.dataset)
+                results[stat] = np.mean(result_ds['fu_li_f_star'].values)
+            elif stat == 'fu_li_d_unfolded':
+                result_ds = fu_li_d_unfolded(self.dataset)
+                results[stat] = np.mean(result_ds['fu_li_d'].values)
+            elif stat == 'fu_li_f_unfolded':
+                result_ds = fu_li_f_unfolded(self.dataset)
+                results[stat] = np.mean(result_ds['fu_li_f'].values)
+            elif stat == 'zeng_e':
+                result_ds = zeng_e(self.dataset)
+                results[stat] = np.mean(result_ds['zeng_e'].values)
+            else:
+                results[stat] = np.nan
+        
+    def _normalize_theta_by_callable_sites(self, window_stats: xr.Dataset) -> xr.Dataset:
+        """
+        Normalize theta estimators by the number of callable sites in each window.
+        
+        This ensures that theta estimates are per-site rather than per-window,
+        accounting for the actual number of analyzable sites in each window.
+        
+        Args:
+            window_stats: Dataset with windowed statistics
+            
+        Returns:
+            Dataset with normalized theta estimators
+        """
+        result = window_stats.copy()
+        
+        # Calculate callable sites per window based on BED overlap
+        callable_sites_per_window = []
+        
+        for window_idx in range(len(window_stats.windows)):
+            window_start = window_stats.window_start.values[window_idx]
+            window_stop = window_stats.window_stop.values[window_idx]
+            window_length = window_stop - window_start
+            
+            # Calculate callable length in this window
+            callable_length = self._calculate_callable_length_in_window(window_start, window_stop)
+            callable_sites_per_window.append(callable_length)
+        
+        callable_sites_per_window = np.array(callable_sites_per_window)
+        
+        # Normalize theta estimators by callable sites
+        theta_stats = ['theta_pi', 'theta_w', 'theta_h', 'theta_l']
+        
+        for stat in theta_stats:
+            if stat in result.data_vars:
+                # Normalize each window's values by its callable sites
+                for window_idx in range(len(result.windows)):
+                    if callable_sites_per_window[window_idx] > 0:
+                        result[stat].values[window_idx] /= callable_sites_per_window[window_idx]
+        
+        return result
+    
+    def _calculate_callable_length_in_window(self, window_start: int, window_stop: int) -> int:
+        """
+        Calculate the number of callable sites in a window based on BED overlap.
+        
+        Args:
+            window_start: Start position of the window
+            window_stop: End position of the window
+            
+        Returns:
+            Number of callable sites in the window
+        """
+        if not hasattr(self, 'callable_config') or self.callable_config is None:
+            # No BED file provided, entire window is callable
+            return window_stop - window_start
+        
+        window_length = window_stop - window_start
+        
+        if self.callable_config.bed_file is None:
+            return window_length
+        
+        # Load BED file
+        bed_df = pd.read_csv(
+            self.callable_config.bed_file,
+            sep='\t',
+            header=None,
+            names=['chrom', 'start', 'end'],
+            usecols=[0, 1, 2]
+        )
+        
+        # Get contig names
+        contig_names = self.dataset.contig_id.values
+        
+        if self.callable_config.bed_format == "non_callable":
+            # BED defines non-callable regions (current behavior)
+            # Calculate masked length in this window
+            masked_length = 0
+            
+            for _, row in bed_df.iterrows():
+                chrom = row['chrom']
+                bed_start = row['start']
+                bed_end = row['end']
+                
+                # Find matching contig
+                contig_idx = None
+                for i, contig_name in enumerate(contig_names):
+                    if str(contig_name) == str(chrom):
+                        contig_idx = i
+                        break
+                
+                if contig_idx is not None:
+                    # Calculate overlap between BED region and window
+                    overlap_start = max(window_start, bed_start)
+                    overlap_end = min(window_stop, bed_end)
+                    
+                    if overlap_start < overlap_end:
+                        masked_length += overlap_end - overlap_start
+            
+            # Calculate callable length
+            callable_length = window_length - masked_length
+            
+        elif self.callable_config.bed_format == "callable":
+            # BED defines callable regions (new behavior)
+            # Calculate callable length in this window
+            callable_length = 0
+            
+            for _, row in bed_df.iterrows():
+                chrom = row['chrom']
+                bed_start = row['start']
+                bed_end = row['end']
+                
+                # Find matching contig
+                contig_idx = None
+                for i, contig_name in enumerate(contig_names):
+                    if str(contig_name) == str(chrom):
+                        contig_idx = i
+                        break
+                
+                if contig_idx is not None:
+                    # Calculate overlap between BED region and window
+                    overlap_start = max(window_start, bed_start)
+                    overlap_end = min(window_stop, bed_end)
+                    
+                    if overlap_start < overlap_end:
+                        callable_length += overlap_end - overlap_start
+            
+        else:
+            raise ValueError(f"Unknown bed_format: {self.callable_config.bed_format}")
+        
+        # Ensure at least 1 callable site to avoid division by zero
+        return max(1, callable_length)
+    
+    def save_results(self, output_path: str, format: str = 'csv'):
+        """
+        Save analysis results to file.
+        
+        Args:
+            output_path: Path to output file
+            format: Output format ('csv', 'tsv', 'parquet', 'zarr')
+        """
+        if not self.window_stats:
+            raise ValueError("No window statistics calculated. Run calculate_windowed_stats() first.")
+        
+        if format == 'zarr':
+            # Save as Zarr dataset
+            self.window_stats.to_zarr(output_path)
+        else:
+            # Extract only statistics and window metadata
+            data = {}
+            
+            # Add window information
+            if 'window_contig' in self.window_stats.coords:
+                data['window_contig'] = self.window_stats.window_contig.values
+            if 'window_start' in self.window_stats.coords:
+                data['window_start'] = self.window_stats.window_start.values
+            if 'window_stop' in self.window_stats.coords:
+                data['window_stop'] = self.window_stats.window_stop.values
+            
+            # Add statistics (only variables that look like statistics)
+            stat_names = [
+                'tajima_d', 'fu_li_d', 'fu_li_f', 'zeng_e',
+                'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+                # Backward compatibility
+                'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta', 'pi'
+            ]
+            
+            for var_name in self.window_stats.data_vars:
+                if any(stat in str(var_name).lower() for stat in stat_names):
+                    data[var_name] = self.window_stats[var_name].values
+            
+            # Create DataFrame
+            df = pd.DataFrame(data)
+            
+            if format == 'csv':
+                df.to_csv(output_path, index=False)
+            elif format == 'tsv':
+                df.to_csv(output_path, sep='\t', index=False)
+            elif format == 'parquet':
+                df.to_parquet(output_path, index=False)
+            else:
+                raise ValueError(f"Unsupported format: {format}")
+        
+        print(f"Results saved to {output_path}")
+    
+    def get_summary(self) -> Dict[str, Any]:
+        """Get summary information about the dataset."""
+        summary = {
+            'n_variants': len(self.dataset.variants),
+            'n_samples': len(self.dataset.samples),
+            'n_contigs': len(self.dataset.contigs),
+            'callable_sites': self.callable_sites,
+            'window_size': self.window_config.window_size,
+            'step_size': self.window_config.step_size,
+            'start': self.window_config.start,
+            'end': self.window_config.end,
+            'max_missing': self.callable_config.max_missing
+        }
+        
+        if self.windowed_dataset is not None:
+            summary['n_windows'] = len(self.windowed_dataset.windows)
+            summary['analysis_type'] = 'genome-wide' if len(self.windowed_dataset.windows) == 1 else 'windowed'
+        else:
+            summary['n_windows'] = 0
+            summary['analysis_type'] = 'not_analyzed'
+        
+        return summary

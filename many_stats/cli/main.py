@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+"""
+Main command-line interface for many-stats.
+
+This module provides the main CLI entry point for calculating population genetics
+statistics from VCF files.
+"""
+
+import sys
+import argparse
+import logging
+from pathlib import Path
+from typing import List, Optional
+
+from many_stats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
+from many_stats import __version__
+
+
+def setup_logging(verbose: int = 0):
+    """
+    Setup logging configuration.
+    
+    Args:
+        verbose: Verbosity level (0=WARNING, 1=INFO, 2=DEBUG)
+    """
+    level = logging.WARNING
+    if verbose == 1:
+        level = logging.INFO
+    elif verbose >= 2:
+        level = logging.DEBUG
+    
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create the main argument parser."""
+    
+    parser = argparse.ArgumentParser(
+        prog='many-stats',
+        description='Calculate population genetics statistics from VCF files',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Calculate genome-wide statistics
+  many-stats stats input.vcf.gz --output results.csv
+  
+  # Windowed analysis with 100kb windows
+  many-stats stats input.vcf.gz --output results.csv \\
+      --window-size 100000 --step-size 50000
+  
+  # With callable sites masking
+  many-stats stats input.vcf.gz --output results.csv \\
+      --bed callable_sites.bed --max-missing 0.1
+  
+  # Region-specific analysis
+  many-stats stats input.vcf.gz --output results.csv \\
+      --region chr1:1000000-5000000 --window-size 50000
+
+For more information, visit: https://github.com/yourusername/many-stats
+        """
+    )
+    
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
+    
+    parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        default=0,
+        help='Increase verbosity (can be used multiple times: -v, -vv)'
+    )
+    
+    subparsers = parser.add_subparsers(
+        dest='command',
+        title='commands',
+        description='Available commands'
+    )
+    
+    # Stats command
+    stats_parser = subparsers.add_parser(
+        'stats',
+        help='Calculate population genetics statistics',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='Calculate various population genetics statistics from VCF files'
+    )
+    add_stats_arguments(stats_parser)
+    
+    # Info command
+    info_parser = subparsers.add_parser(
+        'info',
+        help='Display dataset information',
+        description='Display information about a VCF file'
+    )
+    add_info_arguments(info_parser)
+    
+    return parser
+
+
+def add_stats_arguments(parser: argparse.ArgumentParser):
+    """Add arguments for the stats command."""
+    
+    # Required arguments
+    required = parser.add_argument_group('required arguments')
+    required.add_argument(
+        'input',
+        type=str,
+        help='Input VCF file (.vcf, .vcf.gz, or .zarr)'
+    )
+    required.add_argument(
+        '-o', '--output',
+        type=str,
+        required=True,
+        help='Output file path'
+    )
+    
+    # Statistics selection
+    stats_group = parser.add_argument_group('statistics options')
+    stats_group.add_argument(
+        '-s', '--stats',
+        type=str,
+        nargs='+',
+        default=['tajima_d', 'theta_pi', 'theta_w', 'theta_h'],
+        choices=[
+            # Neutrality tests
+            'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded', 'zeng_e',
+            # Theta estimators (primary names)
+            'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+            # Backward compatibility aliases
+            'pi', 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta'
+        ],
+        help='Statistics to calculate (default: tajima_d theta_pi theta_w theta_h)'
+    )
+    
+    # Windowing options
+    window_group = parser.add_argument_group('windowing options')
+    window_group.add_argument(
+        '-w', '--window-size',
+        type=int,
+        default=None,
+        metavar='INT',
+        help='Window size in base pairs (default: genome-wide)'
+    )
+    window_group.add_argument(
+        '--step-size',
+        type=int,
+        default=None,
+        metavar='INT',
+        help='Step size for sliding windows (default: same as window-size)'
+    )
+    window_group.add_argument(
+        '--min-variants',
+        type=int,
+        default=5,
+        metavar='INT',
+        help='Minimum number of variants per window (default: 5)'
+    )
+    window_group.add_argument(
+        '-r', '--region',
+        type=str,
+        metavar='REGION',
+        help='Genomic region to analyze (format: chr:start-end or chr)'
+    )
+    
+    # Callable sites and filtering
+    filter_group = parser.add_argument_group('filtering options')
+    filter_group.add_argument(
+        '-b', '--bed',
+        type=str,
+        metavar='FILE',
+        help='BED file with callable sites'
+    )
+    filter_group.add_argument(
+        '--max-missing',
+        type=float,
+        default=0.0,
+        metavar='FLOAT',
+        help='Maximum proportion of missing data per variant (default: 0.0)'
+    )
+    
+    # Output options
+    output_group = parser.add_argument_group('output options')
+    output_group.add_argument(
+        '-f', '--format',
+        type=str,
+        default='csv',
+        choices=['csv', 'tsv', 'parquet'],
+        help='Output format (default: csv)'
+    )
+    output_group.add_argument(
+        '--no-header',
+        action='store_true',
+        help='Do not write header row in output'
+    )
+
+
+def add_info_arguments(parser: argparse.ArgumentParser):
+    """Add arguments for the info command."""
+    
+    parser.add_argument(
+        'input',
+        type=str,
+        help='Input VCF file (.vcf, .vcf.gz, or .zarr)'
+    )
+    parser.add_argument(
+        '-b', '--bed',
+        type=str,
+        metavar='FILE',
+        help='BED file to check callable sites'
+    )
+
+
+def parse_region(region_str: str) -> tuple:
+    """
+    Parse region string into contig, start, end.
+    
+    Args:
+        region_str: Region string (e.g., "chr1:1000-5000" or "chr1")
+        
+    Returns:
+        Tuple of (contig, start, end) or (contig, None, None)
+    """
+    if ':' not in region_str:
+        return (region_str, None, None)
+    
+    contig, positions = region_str.split(':', 1)
+    
+    if '-' not in positions:
+        raise ValueError(f"Invalid region format: {region_str}. Expected chr:start-end")
+    
+    start_str, end_str = positions.split('-', 1)
+    start = int(start_str.replace(',', ''))
+    end = int(end_str.replace(',', ''))
+    
+    return (contig, start, end)
+
+
+def run_stats_command(args):
+    """Execute the stats command."""
+    
+    logger = logging.getLogger(__name__)
+    
+    # Validate input file
+    input_path = Path(args.input)
+    if not input_path.exists():
+        logger.error(f"Input file not found: {input_path}")
+        sys.exit(1)
+    
+    # Validate BED file if provided
+    if args.bed:
+        bed_path = Path(args.bed)
+        if not bed_path.exists():
+            logger.error(f"BED file not found: {bed_path}")
+            sys.exit(1)
+    
+    # Parse region if provided
+    region_contig = None
+    region_start = None
+    region_end = None
+    if args.region:
+        try:
+            region_contig, region_start, region_end = parse_region(args.region)
+            logger.info(f"Analyzing region: {region_contig}:{region_start}-{region_end}")
+        except ValueError as e:
+            logger.error(f"Invalid region format: {e}")
+            sys.exit(1)
+    
+    # Configure windowing
+    window_config = WindowConfig(
+        window_size=args.window_size,
+        step_size=args.step_size,
+        start=region_start,
+        end=region_end,
+        min_variants=args.min_variants
+    )
+    
+    # Configure callable sites
+    callable_config = CallableSitesConfig(
+        bed_file=args.bed,
+        max_missing=args.max_missing
+    )
+    
+    # Load dataset
+    logger.info(f"Loading data from {input_path}")
+    print(f"Loading VCF: {input_path}")
+    
+    try:
+        genomic_ds = GenomicDataset(
+            data_source=str(input_path),
+            callable_config=callable_config,
+            window_config=window_config
+        )
+    except Exception as e:
+        logger.error(f"Failed to load dataset: {e}")
+        sys.exit(1)
+    
+    # Print dataset summary
+    summary = genomic_ds.get_summary()
+    print(f"\nDataset Summary:")
+    print(f"  Variants: {summary['n_variants']:,}")
+    print(f"  Samples: {summary['n_samples']:,}")
+    print(f"  Contigs: {summary['n_contigs']:,}")
+    if summary['callable_sites']:
+        print(f"  Callable sites: {summary['callable_sites']:,}")
+    
+    # Filter missing data if needed
+    if args.max_missing > 0:
+        logger.info(f"Filtering variants with >{args.max_missing:.1%} missing data")
+        print(f"\nFiltering variants with >{args.max_missing:.1%} missing data...")
+        genomic_ds.filter_missing_data()
+        summary = genomic_ds.get_summary()
+        print(f"  Retained variants: {summary['n_variants']:,}")
+    
+    # Create windows
+    logger.info("Creating windows")
+    print(f"\nCreating windows...")
+    genomic_ds.create_windows()
+    summary = genomic_ds.get_summary()
+    
+    if args.window_size:
+        print(f"  Window size: {args.window_size:,} bp")
+        print(f"  Step size: {args.step_size or args.window_size:,} bp")
+        print(f"  Minimum variants: {args.min_variants}")
+        print(f"  Number of windows: {summary['n_windows']:,}")
+    else:
+        print(f"  Genome-wide analysis")
+    
+    # Calculate statistics
+    logger.info(f"Calculating statistics: {', '.join(args.stats)}")
+    print(f"\nCalculating statistics: {', '.join(args.stats)}")
+    
+    try:
+        if args.window_size or args.region:
+            # Windowed analysis
+            window_stats = genomic_ds.calculate_windowed_stats(
+                stats=args.stats,
+                use_callable_sites=True
+            )
+            print(f"  Calculated statistics for {len(window_stats.windows)} windows")
+            
+            # Save results
+            logger.info(f"Saving results to {args.output}")
+            print(f"\nSaving results to {args.output}...")
+            genomic_ds.save_results(args.output, format=args.format)
+            print(f"✓ Results saved successfully")
+        else:
+            # Genome-wide analysis
+            genome_stats = genomic_ds.calculate_genome_wide_stats(stats=args.stats)
+            print(f"  Genome-wide results:")
+            for stat, value in genome_stats.items():
+                print(f"    {stat}: {value:.6f}")
+            
+            # Save genome-wide results
+            logger.info(f"Saving results to {args.output}")
+            print(f"\nSaving results to {args.output}...")
+            import pandas as pd
+            df = pd.DataFrame([genome_stats])
+            if args.format == 'csv':
+                df.to_csv(args.output, index=False, header=not args.no_header)
+            elif args.format == 'tsv':
+                df.to_csv(args.output, sep='\t', index=False, header=not args.no_header)
+            elif args.format == 'parquet':
+                df.to_parquet(args.output, index=False)
+            print(f"✓ Results saved successfully")
+    except Exception as e:
+        logger.error(f"Failed to calculate/save statistics: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    
+    print(f"\n✓ Analysis complete!")
+
+
+def run_info_command(args):
+    """Execute the info command."""
+    
+    logger = logging.getLogger(__name__)
+    
+    # Validate input file
+    input_path = Path(args.input)
+    if not input_path.exists():
+        logger.error(f"Input file not found: {input_path}")
+        sys.exit(1)
+    
+    # Configure callable sites if BED provided
+    callable_config = None
+    if args.bed:
+        bed_path = Path(args.bed)
+        if not bed_path.exists():
+            logger.error(f"BED file not found: {bed_path}")
+            sys.exit(1)
+        callable_config = CallableSitesConfig(bed_file=args.bed)
+    
+    # Load dataset
+    print(f"Loading dataset: {input_path}")
+    
+    try:
+        genomic_ds = GenomicDataset(
+            data_source=str(input_path),
+            callable_config=callable_config
+        )
+    except Exception as e:
+        logger.error(f"Failed to load dataset: {e}")
+        sys.exit(1)
+    
+    # Get and display summary
+    summary = genomic_ds.get_summary()
+    
+    print(f"\n{'='*60}")
+    print(f"Dataset Information")
+    print(f"{'='*60}")
+    print(f"File: {input_path.name}")
+    print(f"\nDimensions:")
+    print(f"  Variants: {summary['n_variants']:,}")
+    print(f"  Samples: {summary['n_samples']:,}")
+    print(f"  Contigs: {summary['n_contigs']:,}")
+    
+    if summary['callable_sites']:
+        print(f"\nCallable Sites:")
+        print(f"  Callable: {summary['callable_sites']:,}")
+        print(f"  Non-callable: {summary['n_variants'] - summary['callable_sites']:,}")
+        print(f"  Callable rate: {summary['callable_sites']/summary['n_variants']:.1%}")
+    
+    # Check for missing data
+    from many_stats.utils.validation import check_missing_data
+    missing_info = check_missing_data(genomic_ds.dataset)
+    
+    print(f"\nMissing Data:")
+    print(f"  Total missing calls: {missing_info['total_missing']:,}")
+    print(f"  Missing rate: {missing_info['missing_rate']:.3%}")
+    print(f"  Variants with missing: {missing_info['variants_with_missing']:,}")
+    print(f"  Samples with missing: {missing_info['samples_with_missing']:,}")
+    
+    print(f"\n{'='*60}")
+
+
+def main(argv: Optional[List[str]] = None):
+    """
+    Main entry point for the CLI.
+    
+    Args:
+        argv: Command-line arguments (default: sys.argv[1:])
+    """
+    parser = create_parser()
+    
+    if argv is None:
+        argv = sys.argv[1:]
+    
+    # Show help if no arguments provided
+    if len(argv) == 0:
+        parser.print_help()
+        sys.exit(0)
+    
+    args = parser.parse_args(argv)
+    
+    # Setup logging
+    setup_logging(args.verbose)
+    
+    # Execute command
+    if args.command == 'stats':
+        run_stats_command(args)
+    elif args.command == 'info':
+        run_info_command(args)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+

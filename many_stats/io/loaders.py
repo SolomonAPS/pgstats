@@ -2,47 +2,116 @@
 Data loading utilities for various genetic data formats.
 """
 
+import os
+import tempfile
 import sgkit as sg
 import xarray as xr
-from typing import Optional, Union
+import bio2zarr.vcf as v2z
+from typing import Optional, Union, List
+from pathlib import Path
 
 
-def load_vcf(vcf_path: str, **kwargs) -> xr.Dataset:
+def load_vcf(vcf_path: Union[str, List[str]], 
+             temp_dir: Optional[str] = None,
+             keep_zarr: bool = False,
+             variants_chunk_size: Optional[int] = None,
+             samples_chunk_size: Optional[int] = None,
+             worker_processes: int = 0,
+             show_progress: bool = True,
+             **kwargs) -> xr.Dataset:
     """
-    Load VCF data using sgkit (via bio2zarr).
+    Load VCF data using bio2zarr Python API.
+    
+    This function converts VCF to Zarr format using bio2zarr's Python API
+    and then loads the resulting Zarr dataset with sgkit.
     
     Args:
-        vcf_path: Path to VCF file
-        **kwargs: Additional arguments passed to sgkit
+        vcf_path: Path to VCF file (.vcf or .vcf.gz) or list of VCF files
+        temp_dir: Directory for temporary files (default: system temp)
+        keep_zarr: Whether to keep the intermediate Zarr files
+        variants_chunk_size: Chunk size for variants dimension
+        samples_chunk_size: Chunk size for samples dimension
+        worker_processes: Number of worker processes for parallel conversion
+        show_progress: Whether to show progress during conversion
+        **kwargs: Additional arguments passed to sgkit.load_dataset
+        
+    Returns:
+        sgkit Dataset
+        
+    Raises:
+        FileNotFoundError: If VCF file doesn't exist
+        ImportError: If bio2zarr is not installed
+        RuntimeError: If conversion fails
+    """
+    
+    # Handle single VCF path or list of paths
+    if isinstance(vcf_path, str):
+        vcf_paths = [vcf_path]
+    else:
+        vcf_paths = vcf_path
+    
+    # Validate VCF files exist
+    for path in vcf_paths:
+        if not Path(path).exists():
+            raise FileNotFoundError(f"VCF file not found: {path}")
+    
+    # Set up temporary directory
+    if temp_dir is None:
+        temp_dir = tempfile.mkdtemp(prefix="vcf2zarr_")
+    else:
+        os.makedirs(temp_dir, exist_ok=True)
+    
+    temp_dir = Path(temp_dir)
+    
+    # Generate Zarr output path
+    if len(vcf_paths) == 1:
+        zarr_path = temp_dir / f"{Path(vcf_paths[0]).stem}.vcz"
+    else:
+        zarr_path = temp_dir / "combined.vcz"
+    
+    try:
+        # Convert VCF to Zarr using bio2zarr Python API
+        print(f"Converting VCF to Zarr: {zarr_path}")
+        v2z.convert(
+            vcf_paths,
+            str(zarr_path),
+            variants_chunk_size=variants_chunk_size,
+            samples_chunk_size=samples_chunk_size,
+            worker_processes=worker_processes,
+            show_progress=show_progress
+        )
+        
+        # Load Zarr dataset with sgkit
+        print(f"Loading Zarr dataset: {zarr_path}")
+        dataset = sg.load_dataset(str(zarr_path), **kwargs)
+        
+        return dataset
+        
+    except Exception as e:
+        raise RuntimeError(f"VCF conversion failed: {e}")
+    
+    finally:
+        # Clean up Zarr files unless requested to keep them
+        if not keep_zarr and zarr_path.exists():
+            import shutil
+            shutil.rmtree(zarr_path)
+
+
+def load_vcf_simple(vcf_path: Union[str, List[str]], **kwargs) -> xr.Dataset:
+    """
+    Simple VCF loading function with automatic cleanup.
+    
+    This is a convenience wrapper around load_vcf that automatically
+    handles temporary files and cleanup.
+    
+    Args:
+        vcf_path: Path to VCF file (.vcf or .vcf.gz) or list of VCF files
+        **kwargs: Additional arguments passed to load_vcf
         
     Returns:
         sgkit Dataset
     """
-    # Note: This would typically use bio2zarr for VCF files
-    # For now, we'll provide a placeholder
-    raise NotImplementedError(
-        "VCF loading requires bio2zarr. "
-        "Please convert VCF to Zarr format first using bio2zarr."
-    )
-
-
-def load_plink(bed_path: str, 
-               bim_path: Optional[str] = None,
-               fam_path: Optional[str] = None,
-               **kwargs) -> xr.Dataset:
-    """
-    Load PLINK data using sgkit.
-    
-    Args:
-        bed_path: Path to .bed file
-        bim_path: Path to .bim file (optional, inferred from bed_path)
-        fam_path: Path to .fam file (optional, inferred from bed_path)
-        **kwargs: Additional arguments passed to sgkit
-        
-    Returns:
-        sgkit Dataset
-    """
-    return sg.read_plink(bed_path, bim_path, fam_path, **kwargs)
+    return load_vcf(vcf_path, keep_zarr=False, **kwargs)
 
 
 def load_zarr(zarr_path: str, **kwargs) -> xr.Dataset:
@@ -59,6 +128,20 @@ def load_zarr(zarr_path: str, **kwargs) -> xr.Dataset:
     return sg.load_dataset(zarr_path, **kwargs)
 
 
+def check_bio2zarr_available() -> bool:
+    """
+    Check if bio2zarr package is available.
+    
+    Returns:
+        True if bio2zarr is available, False otherwise
+    """
+    try:
+        import bio2zarr.vcf
+        return True
+    except ImportError:
+        return False
+
+
 def load_dataset(data_path: str, 
                  format: Optional[str] = None,
                  **kwargs) -> xr.Dataset:
@@ -67,7 +150,7 @@ def load_dataset(data_path: str,
     
     Args:
         data_path: Path to data file
-        format: Data format ('plink', 'zarr', 'vcf')
+        format: Data format ('zarr', 'vcf')
         **kwargs: Additional arguments passed to loader
         
     Returns:
@@ -85,10 +168,8 @@ def load_dataset(data_path: str,
             raise ValueError(f"Could not infer format from path: {data_path}")
     
     if format == 'zarr':
-        return load_zarr(data_path, **kwargs)
-    elif format == 'plink':
-        return load_plink(data_path, **kwargs)
+        return load_zarr(data_path, **kwargs)           
     elif format == 'vcf':
-        return load_vcf(data_path, **kwargs)
+        return load_vcf_simple(data_path, **kwargs)
     else:
         raise ValueError(f"Unsupported format: {format}")
