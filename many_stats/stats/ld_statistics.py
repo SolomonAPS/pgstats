@@ -225,6 +225,90 @@ def calculate_ld_r_squared(genotypes: np.ndarray) -> float:
     return r * r
 
 
+@numba.njit(nogil=True, fastmath=False)
+def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> float:
+    """
+    Calculate Kim and Nielsen's omega (ω) statistic for detecting hard sweeps.
+    
+    The omega statistic contrasts linkage disequilibrium within regions
+    versus between regions to detect the characteristic LD pattern of
+    a completed hard sweep.
+    
+    Reference: Walsh and Lynch (2018) Equation 9.37
+    
+    Args:
+        genotypes: Array of shape (n_variants, n_samples, ploidy) with genotype calls
+        window_size: Size of the sliding window for analysis
+        
+    Returns:
+        Omega statistic value
+    """
+    n_variants, n_samples, ploidy = genotypes.shape
+    
+    if n_variants < 3:  # Need at least 3 variants for meaningful analysis
+        return np.nan
+    
+    # Calculate all pairwise r² values
+    r_squared_matrix = np.zeros((n_variants, n_variants))
+    
+    for i in range(n_variants):
+        for j in range(i + 1, n_variants):
+            # Get genotypes for this pair
+            gt_i = genotypes[i, :, 0]  # Use first chromosome
+            gt_j = genotypes[j, :, 0]  # Use first chromosome
+            
+            # Combine into pair format for calculate_ld_r_squared
+            pair_genotypes = np.column_stack((gt_i, gt_j))
+            
+            # Calculate r²
+            r_squared = calculate_ld_r_squared(pair_genotypes)
+            r_squared_matrix[i, j] = r_squared
+            r_squared_matrix[j, i] = r_squared
+    
+    # Calculate omega for different window positions
+    max_omega = -np.inf
+    
+    for start_pos in range(n_variants - window_size + 1):
+        end_pos = start_pos + window_size
+        
+        # Define regions L and R
+        l_size = window_size // 2
+        r_size = window_size - l_size
+        
+        if l_size < 1 or r_size < 1:
+            continue
+        
+        # Calculate Cs,l
+        s = window_size
+        l = l_size
+        c_s_l = (l * (s - l)) / (l * (l - 1) / 2 + (s - l) * (s - l - 1) / 2)
+        
+        # Calculate within-L LD
+        within_l = 0.0
+        for i in range(start_pos, start_pos + l):
+            for j in range(i + 1, start_pos + l):
+                within_l += r_squared_matrix[i, j]
+        
+        # Calculate within-R LD
+        within_r = 0.0
+        for i in range(start_pos + l, end_pos):
+            for j in range(i + 1, end_pos):
+                within_r += r_squared_matrix[i, j]
+        
+        # Calculate between L and R LD
+        between_lr = 0.0
+        for i in range(start_pos, start_pos + l):
+            for j in range(start_pos + l, end_pos):
+                between_lr += r_squared_matrix[i, j]
+        
+        # Calculate omega
+        if between_lr > 0:
+            omega = c_s_l * (within_l + within_r) / between_lr
+            max_omega = max(max_omega, omega)
+    
+    return max_omega if max_omega != -np.inf else np.nan
+
+
 # =============================================================================
 # HIGH-LEVEL LD FUNCTIONS (USER-FACING)
 # =============================================================================
@@ -472,3 +556,35 @@ def ld_r_squared(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dat
         Dataset with r² values
     """
     return calculate_ld_matrix(ds, call_genotype)
+
+
+def omega_statistic(ds: xr.Dataset, 
+                   call_genotype: str = "call_genotype",
+                   window_size: int = 10) -> xr.Dataset:
+    """
+    Calculate Kim and Nielsen's omega (ω) statistic for detecting hard sweeps.
+    
+    The omega statistic contrasts linkage disequilibrium within regions
+    versus between regions to detect the characteristic LD pattern of
+    a completed hard sweep.
+    
+    Reference: Walsh and Lynch (2018) Equation 9.37
+    
+    Args:
+        ds: sgkit Dataset containing genotype calls
+        call_genotype: Name of the genotype variable
+        window_size: Size of the sliding window for analysis
+        
+    Returns:
+        Dataset with omega statistic value
+    """
+    genotypes = ds[call_genotype].values
+    
+    # Calculate omega statistic
+    omega_value = calculate_omega_statistic(genotypes, window_size)
+    
+    # Create result dataset
+    result = ds.copy()
+    result["omega_statistic"] = (["statistics"], np.array([omega_value]))
+    
+    return result
