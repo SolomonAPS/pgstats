@@ -23,11 +23,11 @@ from typing import Tuple
 @numba.njit(nogil=True, fastmath=False)
 def hash_haplotype(haplotype: np.ndarray) -> int:
     """
-    Create a hash for a haplotype sequence.
+    Create a hash for a haplotype sequence using sgkit's DJBX33A hash function.
     
-    This is a simplified version of sgkit's hash_array function.
-    It creates a unique identifier for each haplotype by treating
-    the sequence as a base-3 number (0, 1, missing).
+    This matches sgkit's implementation exactly, including missing data (-1) in the hash.
+    This approach makes no assumptions about missing data and is transparent about
+    the limitations of haplotype estimation with missing genotypes.
     
     Args:
         haplotype: Array of shape (n_variants,) with haplotype data
@@ -36,14 +36,10 @@ def hash_haplotype(haplotype: np.ndarray) -> int:
     Returns:
         Hash value for the haplotype
     """
-    hash_value = 0
-    base = 3  # Base-3 encoding: 0, 1, missing
-    
-    for i, allele in enumerate(haplotype):
-        if allele == -1:  # Missing data
-            hash_value = hash_value * base + 2
-        else:
-            hash_value = hash_value * base + int(allele)
+    # DJBX33A hash function (matches sgkit exactly)
+    hash_value = 5381
+    for i in range(haplotype.shape[0]):
+        hash_value = hash_value * 33 + haplotype[i]
     
     return hash_value
 
