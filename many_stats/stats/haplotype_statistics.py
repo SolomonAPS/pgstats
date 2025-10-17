@@ -21,17 +21,15 @@ from typing import Tuple
 # =============================================================================
 
 @numba.njit(nogil=True, fastmath=False)
-def hash_haplotype(haplotype: np.ndarray) -> int:
+def hash_haplotype(haplotype: np.ndarray, ignore_missing: bool = False) -> int:
     """
     Create a hash for a haplotype sequence using sgkit's DJBX33A hash function.
-    
-    This matches sgkit's implementation exactly, including missing data (-1) in the hash.
-    This approach makes no assumptions about missing data and is transparent about
-    the limitations of haplotype estimation with missing genotypes.
     
     Args:
         haplotype: Array of shape (n_variants,) with haplotype data
                   0 = reference allele, 1 = alternate allele, -1 = missing
+        ignore_missing: If True, ignore missing data (-1) in hashing
+                       If False, include missing data in hash (default sgkit behavior)
     
     Returns:
         Hash value for the haplotype
@@ -39,6 +37,9 @@ def hash_haplotype(haplotype: np.ndarray) -> int:
     # DJBX33A hash function (matches sgkit exactly)
     hash_value = 5381
     for i in range(haplotype.shape[0]):
+        if ignore_missing and haplotype[i] == -1:
+            # Skip missing data when ignore_missing=True
+            continue
         hash_value = hash_value * 33 + haplotype[i]
     
     return hash_value
@@ -85,7 +86,7 @@ def estimate_haplotypes_from_phased_data(genotypes: np.ndarray) -> np.ndarray:
 
 
 @numba.njit(nogil=True, fastmath=False)
-def hash_haplotypes(haplotypes: np.ndarray) -> np.ndarray:
+def hash_haplotypes(haplotypes: np.ndarray, ignore_missing: bool = False) -> np.ndarray:
     """
     Hash all haplotypes to create unique identifiers.
     
@@ -94,6 +95,8 @@ def hash_haplotypes(haplotypes: np.ndarray) -> np.ndarray:
     
     Args:
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
+        ignore_missing: If True, ignore missing data (-1) in hashing
+                       If False, include missing data in hash (default sgkit behavior)
     
     Returns:
         Array of shape (n_haplotypes,) with hash values
@@ -102,9 +105,50 @@ def hash_haplotypes(haplotypes: np.ndarray) -> np.ndarray:
     hash_values = np.zeros(n_haplotypes, dtype=np.int64)
     
     for haplotype_idx in range(n_haplotypes):
-        hash_values[haplotype_idx] = hash_haplotype(haplotypes[:, haplotype_idx])
+        hash_values[haplotype_idx] = hash_haplotype(haplotypes[:, haplotype_idx], ignore_missing)
     
     return hash_values
+
+
+@numba.njit(nogil=True, fastmath=False)
+def filter_haplotypes_by_missingness(haplotypes: np.ndarray, 
+                                   max_missing: float,
+                                   missing_is_percentage: bool = True) -> np.ndarray:
+    """
+    Filter haplotypes based on missing data threshold.
+    
+    This function removes entire haplotypes that exceed the missingness threshold,
+    then statistics are calculated only on the remaining haplotypes.
+    
+    Args:
+        haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
+        max_missing: Maximum allowed missing data (percentage 0-1 or absolute count)
+        missing_is_percentage: If True, max_missing is percentage (0-1), 
+                              if False, max_missing is absolute count
+    
+    Returns:
+        Boolean array of shape (n_haplotypes,) indicating which haplotypes pass the filter
+    """
+    n_variants, n_haplotypes = haplotypes.shape
+    valid_haplotypes = np.ones(n_haplotypes, dtype=numba.boolean)
+    
+    for i in range(n_haplotypes):
+        missing_count = 0
+        for j in range(n_variants):
+            if haplotypes[j, i] == -1:
+                missing_count += 1
+        
+        if missing_is_percentage:
+            # max_missing is a percentage (0-1)
+            missing_fraction = missing_count / n_variants
+            if missing_fraction > max_missing:
+                valid_haplotypes[i] = False
+        else:
+            # max_missing is an absolute count
+            if missing_count > max_missing:
+                valid_haplotypes[i] = False
+    
+    return valid_haplotypes
 
 
 # =============================================================================
@@ -182,7 +226,10 @@ def count_unique_values(values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 
 @numba.njit(nogil=True, fastmath=False)
-def calculate_garud_h_statistics(haplotypes: np.ndarray) -> np.ndarray:
+def calculate_garud_h_statistics(haplotypes: np.ndarray,
+                               ignore_missing: bool = False,
+                               max_missing: float = 1.0,
+                               missing_is_percentage: bool = True) -> np.ndarray:
     """
     Calculate Garud H1, H12, H123, and H2/H1 statistics using sgkit's hashing approach.
     
@@ -192,6 +239,13 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray) -> np.ndarray:
     
     Args:
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
+        ignore_missing: If True, ignore missing data (-1) in hashing
+                       If False, include missing data in hash (default sgkit behavior)
+        max_missing: Maximum allowed missing data (percentage 0-1 or absolute count)
+                    Default: 1.0 (100% missing data allowed - no filtering)
+        missing_is_percentage: If True, max_missing is percentage (0-1), 
+                              if False, max_missing is absolute count
+                              Default: True
     
     Returns:
         Array of [H1, H12, H123, H2/H1] values
@@ -201,12 +255,20 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray) -> np.ndarray:
     if n_haplotypes < 2:
         return np.array([np.nan, np.nan, np.nan, np.nan])
     
+    # Filter haplotypes by missingness threshold
+    valid_mask = filter_haplotypes_by_missingness(haplotypes, max_missing, missing_is_percentage)
+    valid_haplotypes = haplotypes[:, valid_mask]
+    n_valid_haplotypes = np.sum(valid_mask)
+    
+    if n_valid_haplotypes < 2:
+        return np.array([np.nan, np.nan, np.nan, np.nan])
+    
     # Hash all haplotypes to create unique identifiers
-    hash_values = hash_haplotypes(haplotypes)
+    hash_values = hash_haplotypes(valid_haplotypes, ignore_missing)
     
     # Count haplotype frequencies
     unique_hashes, counts = count_unique_values(hash_values)
-    frequencies = counts / n_haplotypes
+    frequencies = counts / n_valid_haplotypes
     
     # Sort frequencies in descending order
     frequencies = np.sort(frequencies)[::-1]
@@ -272,7 +334,10 @@ def haplotype_diversity(ds: xr.Dataset,
 
 
 def garud_h_statistics(ds: xr.Dataset,
-                      call_genotype: str = "call_genotype") -> xr.Dataset:
+                      call_genotype: str = "call_genotype",
+                      ignore_missing: bool = False,
+                      max_missing: float = 1.0,
+                      missing_is_percentage: bool = True) -> xr.Dataset:
     """
     Calculate Garud H1, H12, H123, and H2/H1 statistics using sgkit's hashing approach.
     
@@ -283,6 +348,13 @@ def garud_h_statistics(ds: xr.Dataset,
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
+        ignore_missing: If True, ignore missing data (-1) in hashing
+                       If False, include missing data in hash (default sgkit behavior)
+        max_missing: Maximum allowed missing data (percentage 0-1 or absolute count)
+                    Default: 1.0 (100% missing data allowed - no filtering)
+        missing_is_percentage: If True, max_missing is percentage (0-1), 
+                              if False, max_missing is absolute count
+                              Default: True
         
     Returns:
         Dataset with Garud H statistics
@@ -300,7 +372,8 @@ def garud_h_statistics(ds: xr.Dataset,
     h2_h1_values = []
     
     for var_idx in range(n_variants):
-        stats = calculate_garud_h_statistics(haplotypes[var_idx:var_idx+1, :])
+        stats = calculate_garud_h_statistics(haplotypes[var_idx:var_idx+1, :], 
+                                           ignore_missing, max_missing, missing_is_percentage)
         h1_values.append(stats[0])
         h12_values.append(stats[1])
         h123_values.append(stats[2])

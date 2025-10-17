@@ -23,6 +23,8 @@ from .sfs_statistics import (
     fu_li_d_unfolded,
     fu_li_f_unfolded,
     zeng_e,
+    # SFS components
+    singletons,
 )
 
 from .ld_statistics import (
@@ -60,6 +62,9 @@ __all__ = [
     "fu_li_d_unfolded",
     "fu_li_f_unfolded",
     "zeng_e",
+    
+    # SFS components
+    "singletons",
     
     # Linkage disequilibrium statistics
     "calculate_ld_matrix",

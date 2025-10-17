@@ -37,23 +37,28 @@ def get_unfolded_sfs(variant_matrix: np.ndarray) -> Tuple[np.ndarray, int]:
     
     Args:
         variant_matrix: numpy array where rows are positions and columns are samples
-                       0 = ancestral, 1 = derived
+                       0 = ancestral, 1 = derived, -1 = missing
         
     Returns:
         tuple: (sfs, n) where:
             sfs: Array of counts [ξ₁, ξ₂, ..., ξₙ₋₁]
-            n: Sample size
+            n: Sample size (maximum possible, actual per-site n varies)
     """
     n_variants, n_samples = variant_matrix.shape
     sfs = np.zeros(n_samples - 1, dtype=np.int64)
     
     for i in range(n_variants):
+        # Count non-missing samples and derived alleles for this site
+        non_missing_count = 0
         derived_count = 0
         for j in range(n_samples):
-            if variant_matrix[i, j] == 1:
-                derived_count += 1
+            if variant_matrix[i, j] != -1:  # Not missing
+                non_missing_count += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
         
-        if 1 <= derived_count <= n_samples - 1:
+        # Only include if we have data and it's polymorphic
+        if non_missing_count > 1 and 1 <= derived_count <= non_missing_count - 1:
             sfs[derived_count - 1] += 1
     
     return sfs, n_samples
@@ -68,24 +73,29 @@ def get_folded_sfs(variant_matrix: np.ndarray) -> Tuple[np.ndarray, int]:
     
     Args:
         variant_matrix: numpy array where rows are positions and columns are samples
-                       0 = ancestral, 1 = derived
+                       0 = ancestral, 1 = derived, -1 = missing
         
     Returns:
         tuple: (folded_sfs, n) where:
             folded_sfs: Array of counts [η₁, η₂, ..., η_{n/2}]
-            n: Sample size
+            n: Sample size (maximum possible, actual per-site n varies)
     """
     n_variants, n_samples = variant_matrix.shape
     folded_sfs = np.zeros(n_samples // 2, dtype=np.int64)
     
     for i in range(n_variants):
+        # Count non-missing samples and derived alleles for this site
+        non_missing_count = 0
         derived_count = 0
         for j in range(n_samples):
-            if variant_matrix[i, j] == 1:
-                derived_count += 1
+            if variant_matrix[i, j] != -1:  # Not missing
+                non_missing_count += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
         
-        minor_count = min(derived_count, n_samples - derived_count)
-        if 1 <= minor_count <= n_samples // 2:
+        # Calculate minor allele count
+        minor_count = min(derived_count, non_missing_count - derived_count)
+        if non_missing_count > 1 and 1 <= minor_count <= non_missing_count // 2:
             folded_sfs[minor_count - 1] += 1
     
     return folded_sfs, n_samples
@@ -94,6 +104,30 @@ def get_folded_sfs(variant_matrix: np.ndarray) -> Tuple[np.ndarray, int]:
 # =============================================================================
 # LOW-LEVEL HELPER FUNCTIONS (NUMBA-COMPILED)
 # =============================================================================
+
+@numba.njit
+def get_per_site_sample_sizes(variant_matrix: np.ndarray) -> np.ndarray:
+    """
+    Get the actual sample size (non-missing count) for each site.
+    
+    Args:
+        variant_matrix: numpy array where rows are positions and columns are samples
+                       0 = ancestral, 1 = derived, -1 = missing
+    
+    Returns:
+        Array of sample sizes per site
+    """
+    n_variants, n_samples = variant_matrix.shape
+    site_n = np.zeros(n_variants, dtype=np.int64)
+    
+    for i in range(n_variants):
+        count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                count += 1
+        site_n[i] = count
+    
+    return site_n
 
 @numba.njit
 def calculate_S(sfs: np.ndarray) -> int:
@@ -357,18 +391,30 @@ def calculate_pi(variant_matrix: np.ndarray) -> float:
     
     Args:
         variant_matrix: numpy array where rows are positions and columns are samples
+                       0 = ancestral, 1 = derived, -1 = missing
         
     Returns:
         float: π value
     """
-    sfs, n = get_unfolded_sfs(variant_matrix)
-    n_pairs = (n * (n - 1)) / 2.0
+    n_variants, n_samples = variant_matrix.shape
+    total_pi = 0.0
     
-    pi = 0.0
-    for i in range(1, n):
-        pi += i * (n - i) * sfs[i - 1]
+    for i in range(n_variants):
+        # Count non-missing samples and derived alleles for this site
+        non_missing = 0
+        derived_count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                non_missing += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
+        
+        if non_missing > 1:
+            n_pairs = (non_missing * (non_missing - 1)) / 2.0
+            pi_site = (derived_count * (non_missing - derived_count)) / n_pairs
+            total_pi += pi_site
     
-    return pi / n_pairs
+    return total_pi
 
 
 @numba.njit
@@ -402,6 +448,42 @@ def calculate_theta_w(sfs: np.ndarray, n: int) -> float:
 
 
 @numba.njit
+def calculate_theta_w_per_site(variant_matrix: np.ndarray) -> float:
+    """
+    Calculate Watterson's theta (θw) accounting for per-site missing data.
+    From Wakeley (2009) Coalescent Theory, equation 4.40:
+    θw = S/a₁ where S is the number of segregating sites and a₁ is the harmonic number.
+    
+    Args:
+        variant_matrix: numpy array where rows are positions and columns are samples
+                       0 = ancestral, 1 = derived, -1 = missing
+        
+    Returns:
+        float: Watterson's theta
+    """
+    n_variants, n_samples = variant_matrix.shape
+    total_theta_w = 0.0
+    
+    for i in range(n_variants):
+        # Count non-missing samples and derived alleles for this site
+        non_missing = 0
+        derived_count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                non_missing += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
+        
+        # Only count as segregating if polymorphic
+        if non_missing > 1 and 1 <= derived_count <= non_missing - 1:
+            a1 = calculate_a1(non_missing)
+            theta_w_site = 1.0 / a1
+            total_theta_w += theta_w_site
+    
+    return total_theta_w
+
+
+@numba.njit
 def calculate_theta_h(sfs: np.ndarray, n: int) -> float:
     """
     Calculate Fay and Wu's theta (θh).
@@ -421,6 +503,40 @@ def calculate_theta_h(sfs: np.ndarray, n: int) -> float:
             theta_h += i * i * sfs[i - 1]
     
     return theta_h / (n * (n - 1))
+
+
+@numba.njit
+def calculate_theta_h_per_site(variant_matrix: np.ndarray) -> float:
+    """
+    Calculate Fay and Wu's theta (θh) accounting for per-site missing data.
+    From Fay and Wu (2000), equation 2:
+    θh = sum(i²ξᵢ) / (n(n-1)) from i=1 to n-1
+    
+    Args:
+        variant_matrix: numpy array where rows are positions and columns are samples
+                       0 = ancestral, 1 = derived, -1 = missing
+        
+    Returns:
+        float: Fay and Wu's theta
+    """
+    n_variants, n_samples = variant_matrix.shape
+    total_theta_h = 0.0
+    
+    for i in range(n_variants):
+        # Count non-missing samples and derived alleles for this site
+        non_missing = 0
+        derived_count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                non_missing += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
+        
+        if non_missing > 1 and 1 <= derived_count <= non_missing - 1:
+            theta_h_site = (derived_count * derived_count) / (non_missing * (non_missing - 1))
+            total_theta_h += theta_h_site
+    
+    return total_theta_h
 
 
 @numba.njit
@@ -449,6 +565,43 @@ def calculate_theta_l(sfs: np.ndarray, n: int) -> float:
         return 0.0
     
     return theta_l / (n - 1.0)
+
+
+@numba.njit
+def calculate_theta_l_per_site(variant_matrix: np.ndarray) -> float:
+    """
+    Calculate Zeng et al.'s theta_L (θL) accounting for per-site missing data.
+    From Zeng et al. (2006), equation 9.28a:
+    θL = 1/(n-1) * sum(i·ξᵢ) from i=1 to n-1
+    
+    This estimator places more weight on high-frequency sites compared to θw,
+    making it useful for detecting selective sweeps.
+    
+    Args:
+        variant_matrix: numpy array where rows are positions and columns are samples
+                       0 = ancestral, 1 = derived, -1 = missing
+        
+    Returns:
+        float: Zeng et al.'s theta_L
+    """
+    n_variants, n_samples = variant_matrix.shape
+    total_theta_l = 0.0
+    
+    for i in range(n_variants):
+        # Count non-missing samples and derived alleles for this site
+        non_missing = 0
+        derived_count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                non_missing += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
+        
+        if non_missing > 1 and 1 <= derived_count <= non_missing - 1:
+            theta_l_site = derived_count / (non_missing - 1.0)
+            total_theta_l += theta_l_site
+    
+    return total_theta_l
 
 
 # =============================================================================
@@ -481,8 +634,12 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
     # Calculate θπ for each variant using calculate_pi
     pi_values = np.zeros(n_variants)
@@ -523,15 +680,18 @@ def theta_w(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
     # Calculate θw for each variant
     theta_w_values = np.zeros(n_variants)
     
     for i in range(n_variants):
-        sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
-        theta_w_values[i] = calculate_theta_w(sfs, n)
+        theta_w_values[i] = calculate_theta_w_per_site(variant_matrix[i:i+1, :])
     
     # Create output dataset
     result = ds.copy()
@@ -566,15 +726,18 @@ def theta_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
     # Calculate θh for each variant
     theta_h_values = np.zeros(n_variants)
     
     for i in range(n_variants):
-        sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
-        theta_h_values[i] = calculate_theta_h(sfs, n)
+        theta_h_values[i] = calculate_theta_h_per_site(variant_matrix[i:i+1, :])
     
     # Create output dataset
     result = ds.copy()
@@ -612,15 +775,18 @@ def theta_l(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
     # Calculate θL for each variant
     theta_l_values = np.zeros(n_variants)
     
     for i in range(n_variants):
-        sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
-        theta_l_values[i] = calculate_theta_l(sfs, n)
+        theta_l_values[i] = calculate_theta_l_per_site(variant_matrix[i:i+1, :])
     
     # Create output dataset
     result = ds.copy()
@@ -643,6 +809,10 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     
     Tajima's D tests for neutrality by comparing theta_pi and theta_w.
     
+    Note: Following scikit-allel and sgkit conventions, harmonic numbers (a1, a2, etc.)
+    are calculated using the maximum observed sample size across all variants.
+    This maintains theoretical consistency with the assumption of constant n.
+    
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
@@ -659,17 +829,43 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     
     for i in range(n_variants):
         for j in range(n_samples):
-            # Sum alleles across ploidy
-            allele_sum = np.sum(genotypes[i, j, :])
-            # Convert to binary (0 or 1)
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                # Sum alleles across ploidy
+                allele_sum = np.sum(genotypes[i, j, :])
+                # Convert to binary (0 or 1)
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    
+    # Calculate max sample size across all variants (following scikit-allel/sgkit)
+    max_n = 0
+    for i in range(n_variants):
+        site_n = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                site_n += 1
+        if site_n > max_n:
+            max_n = site_n
+    
+    if max_n <= 1:
+        # No valid data, return zeros
+        result = ds.copy()
+        result["tajima_d"] = (["variants"], np.zeros(n_variants))
+        return result
+    
+    # Calculate harmonic numbers once using max_n
+    a1 = calculate_a1(max_n)
+    a2 = calculate_a2(max_n)
+    c1 = calculate_c1(max_n, a1)
+    c2 = calculate_c2(max_n, a1, a2)
     
     # Calculate Tajima's D for each variant
     tajima_d_values = np.zeros(n_variants)
     
     for i in range(n_variants):
         # Get SFS for this variant
-        sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
+        sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
         S = calculate_S(sfs)
         
         if S == 0:
@@ -677,14 +873,8 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             continue
             
         pi = calculate_pi(variant_matrix[i:i+1, :])
-        a1 = calculate_a1(n)
-        a2 = calculate_a2(n)
         
-        # Calculate variance components
-        c1 = calculate_c1(n, a1)
-        c2 = calculate_c2(n, a1, a2)
-        
-        # Calculate variance
+        # Calculate variance using max_n harmonic numbers
         var = c1 * S + c2 * S * (S - 1)
         
         if var <= 0:
@@ -710,6 +900,10 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     Fu and Li's D uses the unfolded SFS (ζᵢ) while D* uses the folded SFS (ηᵢ).
     Both are sensitive to population size changes.
     
+    Note: Following scikit-allel and sgkit conventions, harmonic numbers (a1, a2, etc.)
+    are calculated using the maximum observed sample size across all variants.
+    This maintains theoretical consistency with the assumption of constant n.
+    
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
@@ -727,8 +921,34 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    
+    # Calculate max sample size across all variants (following scikit-allel/sgkit)
+    max_n = 0
+    for i in range(n_variants):
+        site_n = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                site_n += 1
+        if site_n > max_n:
+            max_n = site_n
+    
+    if max_n <= 1:
+        # No valid data, return zeros
+        result = ds.copy()
+        stat_name = "fu_li_d" if not folded else "fu_li_d_star"
+        result[stat_name] = (["variants"], np.zeros(n_variants))
+        return result
+    
+    # Calculate harmonic numbers once using max_n
+    a1 = calculate_a1(max_n)
+    a2 = calculate_a2(max_n)
+    u_d_star, v_d_star = calculate_v_d_star(max_n, a1, a2)
     
     # Calculate Fu and Li's D or D* for each variant
     fu_li_d_values = np.zeros(n_variants)
@@ -736,11 +956,11 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     for i in range(n_variants):
         if folded:
             # Use folded SFS (D*)
-            sfs, n = get_folded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_folded_sfs(variant_matrix[i:i+1, :])
             singleton_count = sfs[0] if len(sfs) > 0 else 0
         else:
             # Use unfolded SFS (D)
-            sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
             singleton_count = sfs[0] if len(sfs) > 0 else 0
             
         S = calculate_S(sfs)
@@ -748,22 +968,17 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         if S == 0:
             fu_li_d_values[i] = 0.0
             continue
-            
-        a1 = calculate_a1(n)
-        a2 = calculate_a2(n)
         
         # Calculate numerator: S/a₁ - singleton estimator
+        # Note: Using max_n for scaling factor to maintain consistency
         if folded:
             # D*: S/a₁ - ((n-1)/n)η₁
-            numerator = S / a1 - ((n - 1) / n) * singleton_count
+            numerator = S / a1 - ((max_n - 1) / max_n) * singleton_count
         else:
             # D: S/a₁ - ζ₁
             numerator = S / a1 - singleton_count
         
-        # Calculate variance using exact formula from Fu and Li (1993)
-        u_d_star, v_d_star = calculate_v_d_star(n, a1, a2)
-        
-        # Calculate variance
+        # Calculate variance using max_n harmonic numbers
         var = u_d_star * S + v_d_star * S * (S - 1)
         
         if var <= 0:
@@ -793,6 +1008,10 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     Fu and Li's F uses the unfolded SFS (ζᵢ) while F* uses the folded SFS (ηᵢ).
     Both combine pairwise differences with singleton information.
     
+    Note: Following scikit-allel and sgkit conventions, harmonic numbers (a1, a2, etc.)
+    are calculated using the maximum observed sample size across all variants.
+    This maintains theoretical consistency with the assumption of constant n.
+    
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
@@ -810,8 +1029,34 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    
+    # Calculate max sample size across all variants (following scikit-allel/sgkit)
+    max_n = 0
+    for i in range(n_variants):
+        site_n = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                site_n += 1
+        if site_n > max_n:
+            max_n = site_n
+    
+    if max_n <= 1:
+        # No valid data, return zeros
+        result = ds.copy()
+        stat_name = "fu_li_f" if not folded else "fu_li_f_star"
+        result[stat_name] = (["variants"], np.zeros(n_variants))
+        return result
+    
+    # Calculate harmonic numbers once using max_n
+    a1 = calculate_a1(max_n)
+    a2 = calculate_a2(max_n)
+    u_f_star, v_f_star = calculate_v_f_star(max_n, a1, a2)
     
     # Calculate Fu and Li's F or F* for each variant
     fu_li_f_values = np.zeros(n_variants)
@@ -819,11 +1064,11 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     for i in range(n_variants):
         if folded:
             # Use folded SFS (F*)
-            sfs, n = get_folded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_folded_sfs(variant_matrix[i:i+1, :])
             singleton_count = sfs[0] if len(sfs) > 0 else 0
         else:
             # Use unfolded SFS (F)
-            sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
             singleton_count = sfs[0] if len(sfs) > 0 else 0
             
         S = calculate_S(sfs)
@@ -833,21 +1078,17 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             continue
             
         pi = calculate_pi(variant_matrix[i:i+1, :])
-        a1 = calculate_a1(n)
-        a2 = calculate_a2(n)
         
         # Calculate numerator: π - singleton estimator
+        # Note: Using max_n for scaling factor to maintain consistency
         if folded:
             # F*: π - ((n-1)/n)η₁
-            numerator = pi - ((n - 1) / n) * singleton_count
+            numerator = pi - ((max_n - 1) / max_n) * singleton_count
         else:
             # F: π - ζ₁
             numerator = pi - singleton_count
         
-        # Calculate variance using exact formula from Fu and Li (1993)
-        u_f_star, v_f_star = calculate_v_f_star(n, a1, a2)
-        
-        # Calculate variance
+        # Calculate variance using max_n harmonic numbers
         var = u_f_star * S + v_f_star * S * (S - 1)
         
         if var <= 0:
@@ -916,6 +1157,10 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     A negative E indicates an excess of low-frequency sites, which occurs
     immediately after a selective sweep.
     
+    Note: Following scikit-allel and sgkit conventions, harmonic numbers (a1, a2, etc.)
+    are calculated using the maximum observed sample size across all variants.
+    This maintains theoretical consistency with the assumption of constant n.
+    
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
@@ -932,15 +1177,47 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     
     for i in range(n_variants):
         for j in range(n_samples):
-            allele_sum = np.sum(genotypes[i, j, :])
-            variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    
+    # Calculate max sample size across all variants (following scikit-allel/sgkit)
+    max_n = 0
+    for i in range(n_variants):
+        site_n = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                site_n += 1
+        if site_n > max_n:
+            max_n = site_n
+    
+    if max_n <= 1:
+        # No valid data, return zeros
+        result = ds.copy()
+        result["zeng_e"] = (["variants"], np.zeros(n_variants))
+        return result
+    
+    # Calculate harmonic numbers once using max_n
+    a1 = calculate_a1(max_n)
+    a2 = calculate_a2(max_n)
+    b1 = calculate_b1(max_n)
+    b2 = calculate_b2(max_n)
+    
+    # Pre-calculate variance components using max_n
+    term1 = (max_n / (2.0 * (max_n - 1.0))) - (1.0 / a1)
+    term2 = b2 + 2.0 * (max_n / (max_n - 1.0)) ** 2 * b2
+    term2 -= 2.0 * (max_n * b2 - max_n + 1.0) / ((max_n - 1.0) * a1)
+    term2 -= (3.0 * max_n + 1.0) / (max_n - 1.0)
     
     # Calculate Zeng's E for each variant
     zeng_e_values = np.zeros(n_variants)
     
     for i in range(n_variants):
         # Get unfolded SFS for this variant
-        sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
+        sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
         S = calculate_S(sfs)
         
         if S == 0:
@@ -948,31 +1225,13 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
             continue
         
         # Calculate theta_L and theta_w (theta_S)
-        theta_l_val = calculate_theta_l(sfs, n)
-        theta_w_val = calculate_theta_w(sfs, n)
-        
-        # Calculate helper values
-        a1 = calculate_a1(n)
-        a2 = calculate_a2(n)
-        b1 = calculate_b1(n)
-        b2 = calculate_b2(n)
+        theta_l_val = calculate_theta_l_per_site(variant_matrix[i:i+1, :])
+        theta_w_val = calculate_theta_w_per_site(variant_matrix[i:i+1, :])
         
         # Calculate variance of E according to equation 9.28c
         # σ²(E) = [n/(2(n-1)) - 1/a_n]θ + [b_n + 2(n/(n-1))² * b_n - 2(nbn-n+1)/((n-1)a_n) - 3n+1/(n-1)]θ²
-        # This is an approximation; for exact calculation we'd need theta estimate
+        # Using max_n for variance components and theta_w as estimate
         
-        # Simplified variance calculation (similar approach to other tests)
-        if n <= 1:
-            zeng_e_values[i] = 0.0
-            continue
-            
-        # Variance components (from equation 9.28c, using theta_w as estimate)
-        term1 = (n / (2.0 * (n - 1.0))) - (1.0 / a1)
-        term2 = b2 + 2.0 * (n / (n - 1.0)) ** 2 * b2
-        term2 -= 2.0 * (n * b2 - n + 1.0) / ((n - 1.0) * a1)
-        term2 -= (3.0 * n + 1.0) / (n - 1.0)
-        
-        # Estimate variance using theta_w
         var_e = term1 * theta_w_val + term2 * theta_w_val * theta_w_val
         
         if var_e <= 0:
@@ -986,6 +1245,66 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     # Create output dataset
     result = ds.copy()
     result["zeng_e"] = (["variants"], zeng_e_values)
+    
+    return result
+
+
+def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool = True) -> xr.Dataset:
+    """
+    Calculate singleton count for each variant.
+    
+    References:
+    - Walsh and Lynch (2018) Equation 9.26b (folded) and 9.26c (unfolded)
+    - Fu and Li (1993) Statistical tests of neutrality of mutations
+    
+    Singletons are sites where an allele appears only once in the sample.
+    
+    Args:
+        ds: sgkit Dataset containing genotype calls
+        call_genotype: Name of the genotype variable
+        folded: If True, count minor allele singletons (η₁); 
+                if False, count derived allele singletons (ζ₁)
+        
+    Returns:
+        Dataset with singleton counts
+    """
+    # Convert genotypes to variant matrix format
+    genotypes = ds[call_genotype].values
+    n_variants, n_samples, ploidy = genotypes.shape
+    
+    # Convert to binary matrix
+    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
+    
+    for i in range(n_variants):
+        for j in range(n_samples):
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+
+    # Calculate singletons for each variant
+    singleton_values = np.zeros(n_variants)
+    
+    for i in range(n_variants):
+        if folded:
+            # Use folded SFS (η₁)
+            sfs, n = get_folded_sfs(variant_matrix[i:i+1, :])
+            singleton_count = sfs[0] if len(sfs) > 0 else 0
+        else:
+            # Use unfolded SFS (ζ₁)
+            sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
+            singleton_count = sfs[0] if len(sfs) > 0 else 0
+            
+        singleton_values[i] = singleton_count
+    
+    # Create output dataset
+    result = ds.copy()
+    if folded:
+        result["singletons_folded"] = (["variants"], singleton_values)
+    else:
+        result["singletons_unfolded"] = (["variants"], singleton_values)
     
     return result
 

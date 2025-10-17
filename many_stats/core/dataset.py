@@ -277,9 +277,95 @@ class GenomicDataset:
         n_windows = len(self.windowed_dataset.windows)
         print(f"Created {n_windows} windows")
         
+        # Check for boundary issues and warn user
+        self._check_window_boundaries()
+        
         # Filter windows by minimum variants if specified
         if self.window_config.min_variants > 1:
             self._filter_windows_by_variants()
+    
+    def _check_window_boundaries(self):
+        """Check for windows that extend beyond contig boundaries and warn user."""
+        if self.windowed_dataset is None:
+            return
+        
+        window_size = self.window_config.window_size
+        if window_size is None:
+            return  # No windowing, so no boundary issues
+        
+        # Get contig information
+        contig_lengths = self.dataset.contig_length.values
+        contig_ids = self.dataset.contig_id.values
+        
+        # Get window information
+        window_contigs = self.windowed_dataset.window_contig.values
+        window_starts = self.windowed_dataset.window_start.values
+        window_stops = self.windowed_dataset.window_stop.values
+        
+        # Check each window
+        boundary_warnings = []
+        small_window_warnings = []
+        
+        for i, (contig, start_idx, stop_idx) in enumerate(zip(window_contigs, window_starts, window_stops)):
+            contig_length = contig_lengths[contig]
+            contig_id = contig_ids[contig]
+            
+            # Calculate actual window size in base pairs
+            if stop_idx > 0 and start_idx < len(self.dataset.variant_position):
+                # Get actual genomic positions
+                positions = self.dataset.variant_position.values
+                start_pos = positions[start_idx] if start_idx < len(positions) else contig_length
+                stop_pos = positions[stop_idx-1] if stop_idx > 0 and stop_idx-1 < len(positions) else contig_length
+                actual_size = stop_pos - start_pos + 1
+            else:
+                actual_size = 0
+            
+            # Check if window extends beyond contig boundary
+            if stop_idx > 0 and start_idx < len(self.dataset.variant_position):
+                positions = self.dataset.variant_position.values
+                if start_idx < len(positions):
+                    start_pos = positions[start_idx]
+                    if start_pos + window_size > contig_length:
+                        boundary_warnings.append({
+                            'window': i + 1,
+                            'contig': contig_id,
+                            'start_pos': start_pos,
+                            'requested_end': start_pos + window_size,
+                            'contig_length': contig_length,
+                            'actual_size': actual_size
+                        })
+            
+            # Check if window has very few variants compared to expected size
+            n_variants = stop_idx - start_idx
+            if n_variants > 0 and actual_size < window_size * 0.5:  # Less than 50% of expected size
+                small_window_warnings.append({
+                    'window': i + 1,
+                    'contig': contig_id,
+                    'n_variants': n_variants,
+                    'actual_size': actual_size,
+                    'expected_size': window_size
+                })
+        
+        # Print warnings
+        if boundary_warnings:
+            print(f"\n⚠️  WARNING: {len(boundary_warnings)} windows extend beyond contig boundaries:")
+            for warning in boundary_warnings[:5]:  # Show first 5
+                print(f"  Window {warning['window']} on {warning['contig']}: "
+                      f"requested {warning['start_pos']}-{warning['requested_end']} "
+                      f"(contig length: {warning['contig_length']}, actual size: {warning['actual_size']}bp)")
+            if len(boundary_warnings) > 5:
+                print(f"  ... and {len(boundary_warnings) - 5} more windows")
+            print("  These windows will only include variants within the contig boundaries.")
+        
+        if small_window_warnings:
+            print(f"\n⚠️  WARNING: {len(small_window_warnings)} windows have fewer variants than expected:")
+            for warning in small_window_warnings[:5]:  # Show first 5
+                print(f"  Window {warning['window']} on {warning['contig']}: "
+                      f"{warning['n_variants']} variants, {warning['actual_size']}bp "
+                      f"(expected: {warning['expected_size']}bp)")
+            if len(small_window_warnings) > 5:
+                print(f"  ... and {len(small_window_warnings) - 5} more windows")
+            print("  Consider using smaller window sizes or checking variant density.")
     
     def _filter_windows_by_variants(self):
         """Filter windows to only include those with minimum number of variants."""
@@ -460,12 +546,23 @@ class GenomicDataset:
         callable_sites_per_window = []
         
         for window_idx in range(len(window_stats.windows)):
-            window_start = window_stats.window_start.values[window_idx]
-            window_stop = window_stats.window_stop.values[window_idx]
-            window_length = window_stop - window_start
+            window_start_idx = window_stats.window_start.values[window_idx]
+            window_stop_idx = window_stats.window_stop.values[window_idx]
             
-            # Calculate callable length in this window
-            callable_length = self._calculate_callable_length_in_window(window_start, window_stop)
+            # Convert variant indices to genomic positions
+            positions = self.dataset.variant_position.values
+            if window_start_idx < len(positions) and window_stop_idx > 0:
+                window_start_pos = positions[window_start_idx]
+                window_stop_pos = positions[window_stop_idx-1] if window_stop_idx-1 < len(positions) else positions[-1]
+                window_length = window_stop_pos - window_start_pos + 1
+            else:
+                # Empty window
+                window_start_pos = 0
+                window_stop_pos = 0
+                window_length = 0
+            
+            # Calculate callable length in this window using genomic positions
+            callable_length = self._calculate_callable_length_in_window(window_start_pos, window_stop_pos)
             callable_sites_per_window.append(callable_length)
         
         callable_sites_per_window = np.array(callable_sites_per_window)

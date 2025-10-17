@@ -186,9 +186,6 @@ def calculate_ld_d_prime(genotypes: np.ndarray) -> float:
         return np.nan
     
     # Calculate D_max
-    # D_max = min(p_A * (1-p_B), (1-p_A) * p_B) if D > 0
-    # D_max = min(p_A * p_B, (1-p_A) * (1-p_B)) if D < 0
-    
     if D >= 0:
         D_max = min(p_A * (1 - p_B), (1 - p_A) * p_B)
     else:

@@ -103,6 +103,13 @@ ms.io.save_results(ds, "results.zarr")
 - **McDonald-Kreitman test**: Compares polymorphism and divergence patterns
 - **Hudson-Kreitman-Aguade test**: Tests for selection across loci
 
+### Missing Data Handling
+
+All statistics properly handle missing data with per-site sample size adjustments:
+- **Theta estimators** use actual per-site sample sizes for accurate diversity estimates
+- **Neutrality tests** (Tajima's D, Fu & Li's, Zeng's E) use per-site theta values but calculate variance components with max(n) across variants, following scikit-allel and sgkit conventions
+- See [Callable Sites Guide](examples/callable_sites_guide.md) for details
+
 ## Usage Examples
 
 ### Basic Analysis

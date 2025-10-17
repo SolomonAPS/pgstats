@@ -28,6 +28,22 @@ many-stats uses a simple but effective approach:
 2. Mark variants outside callable regions as missing data (-1)
 3. Statistics automatically account for missing data
 
+### Missing Data Handling in Statistics
+
+Different statistics handle per-site missing data differently:
+
+**Per-Site Theta Estimators** (θπ, θw, θh, θL):
+- Use the actual per-site sample size for calculations
+- Each variant is calculated using only non-missing samples at that site
+- Provides the most accurate estimates when missingness varies across sites
+
+**Window-Level Neutrality Tests** (Tajima's D, Fu & Li's D/F, Zeng's E):
+- Per-site theta values use actual per-site sample sizes
+- Harmonic numbers (a₁, a₂, b₁, b₂) and variance components use max(n) across all variants
+- This approach follows scikit-allel and sgkit conventions
+- Maintains theoretical consistency with the assumption of constant n in the formulas
+- Balances accuracy in theta calculations with valid statistical testing
+
 ## BED File Format
 
 ### Standard BED Format
