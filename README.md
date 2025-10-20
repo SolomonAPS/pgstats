@@ -11,10 +11,9 @@ A comprehensive statistical genomics toolkit built on top of [sgkit](https://git
 - **Built on sgkit**: Leverages sgkit's efficient handling of genetic data and cloud-native formats
 - **Numba-optimized**: Custom statistical functions implemented with Numba JIT compilation for high performance
 - **Population genetics statistics**: Tajima's D, Fu and Li's statistics, and other neutrality tests
-- **Theta estimators**: theta_pi (θπ - nucleotide diversity), theta_w (θw - Watterson's), theta_h (θh - Fay and Wu's)
-- **Selection tests**: McDonald-Kreitman test, Hudson-Kreitman-Aguade test
-- **Scalable**: Designed to work with large datasets using Dask for parallel processing
-- **Extensible**: Easy to add custom statistics using Numba
+- **Theta estimators**: theta_pi , theta_w , theta_h, theta_h_L
+- **LD stats**: D, D', r^2, omega
+- **Haplotype statistics**: Garud's stats, haplotype diversity
 
 ## Installation
 
