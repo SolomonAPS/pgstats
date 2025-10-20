@@ -176,7 +176,11 @@ class GenomicDataset:
             
             if contig_idx is not None:
                 # Find variants in this region
-                region_mask = (contigs == contig_idx) & (positions >= start) & (positions < end)
+                # Convert BED (0-based) to VCF (1-based) coordinates
+                # BED [start, end) -> VCF positions (start+1) to end (inclusive)
+                vcf_start = start + 1
+                vcf_end = end
+                region_mask = (contigs == contig_idx) & (positions >= vcf_start) & (positions <= vcf_end)
                 
                 if self.callable_config.bed_format == "non_callable":
                     # BED defines non-callable regions (current behavior)
@@ -474,6 +478,13 @@ class GenomicDataset:
         # Normalize theta estimators by callable sites
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
         
+        # Print mean statistics
+        try:
+            results_df = result_dataset.to_dataframe()
+            self._print_statistic_means(results_df, stats, "windowed analysis")
+        except Exception as e:
+            print(f"Note: Could not calculate mean statistics: {e}")
+        
         self.window_stats = result_dataset
         return result_dataset
     
@@ -527,6 +538,18 @@ class GenomicDataset:
             else:
                 results[stat] = np.nan
         
+        # Print mean statistics
+        print(f"\nGenome-wide Statistics:")
+        print("=" * 50)
+        for stat in stats:
+            if stat in results and not pd.isna(results[stat]):
+                print(f"  {stat:20s}: {results[stat]:.6f}")
+            else:
+                print(f"  {stat:20s}: No valid values")
+        print("=" * 50)
+        
+        return results
+    
     def _normalize_theta_by_callable_sites(self, window_stats: xr.Dataset) -> xr.Dataset:
         """
         Normalize theta estimators by the number of callable sites in each window.
@@ -744,3 +767,139 @@ class GenomicDataset:
             summary['analysis_type'] = 'not_analyzed'
         
         return summary
+    
+    def _print_statistic_means(self, results_df: pd.DataFrame, stats: List[str], analysis_type: str = "analysis"):
+        """
+        Calculate and print mean values for all statistics.
+        
+        Args:
+            results_df: DataFrame with calculated statistics
+            stats: List of statistic names to calculate means for
+            analysis_type: Description of the analysis type for output
+        """
+        print(f"\nMean Statistics ({analysis_type}):")
+        print("=" * 50)
+        
+        for stat in stats:
+            if stat in results_df.columns:
+                # Calculate mean, excluding NaN values
+                mean_val = results_df[stat].mean()
+                n_windows = len(results_df[stat].dropna())
+                total_windows = len(results_df)
+                
+                if pd.isna(mean_val):
+                    print(f"  {stat:20s}: No valid values")
+                else:
+                    print(f"  {stat:20s}: {mean_val:.6f} (n={n_windows}/{total_windows} windows)")
+            else:
+                print(f"  {stat:20s}: Not calculated")
+        
+        print("=" * 50)
+    
+    def calculate_stats_for_regions(self,
+                                    regions: List[Tuple[str, int, int]],
+                                    window_size: int,
+                                    step_size: Optional[int] = None,
+                                    stats: List[str] = None,
+                                    min_variants: int = 1,
+                                    use_callable_sites: bool = True) -> pd.DataFrame:
+        """
+        Calculate statistics for multiple genomic regions.
+        
+        This method efficiently analyzes multiple regions by loading the dataset
+        once and applying region-specific filtering for each analysis. It's
+        particularly useful for analyzing candidate genes, exons, or homologous
+        regions across chromosomes.
+        
+        Args:
+            regions: List of (contig, start, end) tuples (1-based, inclusive)
+                    Example: [("chr1", 1000000, 2000000), ("chr5", 3000000, 4000000)]
+            window_size: Window size in bp for sliding window analysis
+            step_size: Step size for sliding windows (default: window_size)
+            stats: List of statistics to calculate (default: all available)
+            min_variants: Minimum variants per window (default: 1)
+            use_callable_sites: Whether to use callable sites mask (default: True)
+            
+        Returns:
+            DataFrame with columns:
+            - region_contig, region_start, region_end: Region identifiers
+            - window_start, window_end: Window boundaries
+            - n_variants: Number of variants in window
+            - <stat_name>: Calculated statistics
+            
+        Example:
+            >>> regions = [("chr1", 1000000, 2000000), ("chr5", 3000000, 4000000)]
+            >>> results = genomic_ds.calculate_stats_for_regions(
+            ...     regions=regions,
+            ...     window_size=50000,
+            ...     stats=['tajima_d', 'nucleotide_diversity']
+            ... )
+            >>> print(results.columns)
+            ['region_contig', 'region_start', 'region_end', 'window_start', 
+             'window_end', 'n_variants', 'tajima_d', 'nucleotide_diversity']
+        """
+        import pandas as pd
+        
+        if not regions:
+            raise ValueError("regions list cannot be empty")
+        
+        if stats is None:
+            stats = ['tajima_d', 'nucleotide_diversity', 'watterson_theta']
+        
+        if step_size is None:
+            step_size = window_size
+        
+        all_results = []
+        
+        print(f"\nAnalyzing {len(regions)} regions with {window_size:,}bp windows...")
+        
+        for i, (contig, region_start, region_end) in enumerate(regions, 1):
+            print(f"\n[{i}/{len(regions)}] Analyzing region {contig}:{region_start:,}-{region_end:,}")
+            
+            # Update window config for this region
+            self.window_config.start = region_start
+            self.window_config.end = region_end
+            self.window_config.window_size = window_size
+            self.window_config.step_size = step_size
+            self.window_config.min_variants = min_variants
+            
+            try:
+                # Create windows for this region
+                self.create_windows()
+                
+                # Calculate statistics
+                region_stats = self.calculate_windowed_stats(
+                    stats=stats,
+                    use_callable_sites=use_callable_sites
+                )
+                
+                # Convert to DataFrame
+                region_df = region_stats.to_dataframe()
+                
+                # Add region identifiers
+                region_df.insert(0, 'region_contig', contig)
+                region_df.insert(1, 'region_start', region_start)
+                region_df.insert(2, 'region_end', region_end)
+                
+                all_results.append(region_df)
+                
+                print(f"  ✓ Analyzed {len(region_df)} windows")
+                
+            except Exception as e:
+                print(f"  ✗ Error analyzing region {contig}:{region_start}-{region_end}: {e}")
+                continue
+        
+        if not all_results:
+            raise RuntimeError("No regions were successfully analyzed")
+        
+        # Combine all results
+        combined = pd.concat(all_results, ignore_index=True)
+        
+        print(f"\nMulti-region analysis complete: {len(combined)} total windows")
+        print(f"  Regions analyzed: {len(all_results)}")
+        print(f"  Average windows per region: {len(combined) / len(all_results):.1f}")
+        
+        # Print mean statistics
+        self._print_statistic_means(combined, stats, f"multi-region ({len(all_results)} regions)")
+        
+        return combined

@@ -10,7 +10,7 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 from many_stats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
 from many_stats import __version__
@@ -59,6 +59,15 @@ Examples:
   # Region-specific analysis
   many-stats stats input.vcf.gz --output results.csv \\
       --region chr1:1000000-5000000 --window-size 50000
+  
+  # Multi-region analysis
+  many-stats stats input.vcf.gz --output results.csv \\
+      --regions-file candidate_genes.bed --window-size 10000
+  
+  # Multi-region with callable sites masking
+  many-stats stats input.vcf.gz --output results.csv \\
+      --bed callable_sites.bed --regions-file target_regions.bed \\
+      --window-size 50000 --max-missing 0.1
 
 For more information, visit: https://github.com/yourusername/many-stats
         """
@@ -161,11 +170,19 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         metavar='INT',
         help='Minimum number of variants per window (default: 5)'
     )
-    window_group.add_argument(
+    # Region selection (mutually exclusive)
+    region_group = parser.add_mutually_exclusive_group()
+    region_group.add_argument(
         '-r', '--region',
         type=str,
         metavar='REGION',
-        help='Genomic region to analyze (format: chr:start-end or chr)'
+        help='Single genomic region to analyze (format: chr:start-end or chr)'
+    )
+    region_group.add_argument(
+        '--regions-file',
+        type=str,
+        metavar='FILE',
+        help='BED file with multiple regions to analyze (one region per line)'
     )
     
     # Callable sites and filtering
@@ -216,6 +233,57 @@ def add_info_arguments(parser: argparse.ArgumentParser):
     )
 
 
+def parse_regions_file(regions_file: str) -> List[Tuple[str, int, int]]:
+    """
+    Parse BED file with regions to analyze.
+    
+    Args:
+        regions_file: Path to BED file with regions
+        
+    Returns:
+        List of (contig, start, end) tuples (1-based, inclusive)
+        
+    Raises:
+        ValueError: If file format is invalid
+        FileNotFoundError: If file doesn't exist
+    """
+    import pandas as pd
+    
+    bed_path = Path(regions_file)
+    if not bed_path.exists():
+        raise FileNotFoundError(f"Regions file not found: {bed_path}")
+    
+    try:
+        # Read BED file (0-based coordinates)
+        bed_df = pd.read_csv(
+            bed_path,
+            sep='\t',
+            names=['chrom', 'start', 'end'],
+            usecols=[0, 1, 2],
+            comment='#'
+        )
+        
+        if bed_df.empty:
+            raise ValueError("Regions file is empty")
+        
+        # Convert to 1-based coordinates for internal use
+        regions = []
+        for _, row in bed_df.iterrows():
+            contig = str(row['chrom'])
+            start = int(row['start']) + 1  # Convert 0-based to 1-based
+            end = int(row['end'])          # BED end is exclusive, keep as-is
+            
+            if start > end:
+                raise ValueError(f"Invalid region: {contig}:{start}-{end} (start > end)")
+            
+            regions.append((contig, start, end))
+        
+        return regions
+        
+    except Exception as e:
+        raise ValueError(f"Error parsing regions file: {e}")
+
+
 def parse_region(region_str: str) -> tuple:
     """
     Parse region string into contig, start, end.
@@ -259,16 +327,30 @@ def run_stats_command(args):
             logger.error(f"BED file not found: {bed_path}")
             sys.exit(1)
     
-    # Parse region if provided
+    # Parse region(s) if provided
     region_contig = None
     region_start = None
     region_end = None
+    regions_list = None
+    
     if args.region:
         try:
             region_contig, region_start, region_end = parse_region(args.region)
-            logger.info(f"Analyzing region: {region_contig}:{region_start}-{region_end}")
+            logger.info(f"Analyzing single region: {region_contig}:{region_start}-{region_end}")
         except ValueError as e:
             logger.error(f"Invalid region format: {e}")
+            sys.exit(1)
+    
+    elif args.regions_file:
+        try:
+            regions_list = parse_regions_file(args.regions_file)
+            logger.info(f"Analyzing {len(regions_list)} regions from file: {args.regions_file}")
+            for i, (contig, start, end) in enumerate(regions_list[:3], 1):  # Show first 3
+                logger.info(f"  Region {i}: {contig}:{start:,}-{end:,}")
+            if len(regions_list) > 3:
+                logger.info(f"  ... and {len(regions_list) - 3} more regions")
+        except (ValueError, FileNotFoundError) as e:
+            logger.error(f"Error with regions file: {e}")
             sys.exit(1)
     
     # Configure windowing
@@ -317,27 +399,48 @@ def run_stats_command(args):
         summary = genomic_ds.get_summary()
         print(f"  Retained variants: {summary['n_variants']:,}")
     
-    # Create windows
-    logger.info("Creating windows")
-    print(f"\nCreating windows...")
-    genomic_ds.create_windows()
-    summary = genomic_ds.get_summary()
-    
-    if args.window_size:
-        print(f"  Window size: {args.window_size:,} bp")
-        print(f"  Step size: {args.step_size or args.window_size:,} bp")
-        print(f"  Minimum variants: {args.min_variants}")
-        print(f"  Number of windows: {summary['n_windows']:,}")
-    else:
-        print(f"  Genome-wide analysis")
-    
     # Calculate statistics
     logger.info(f"Calculating statistics: {', '.join(args.stats)}")
     print(f"\nCalculating statistics: {', '.join(args.stats)}")
     
     try:
-        if args.window_size or args.region:
-            # Windowed analysis
+        if regions_list:
+            # Multi-region analysis
+            print(f"  Window size: {args.window_size:,} bp")
+            print(f"  Step size: {args.step_size or args.window_size:,} bp")
+            print(f"  Minimum variants: {args.min_variants}")
+            
+            results_df = genomic_ds.calculate_stats_for_regions(
+                regions=regions_list,
+                window_size=args.window_size,
+                step_size=args.step_size,
+                stats=args.stats,
+                min_variants=args.min_variants,
+                use_callable_sites=True
+            )
+            
+            print(f"  Calculated statistics for {len(results_df)} total windows")
+            
+            # Save results
+            logger.info(f"Saving results to {args.output}")
+            print(f"\nSaving results to {args.output}...")
+            results_df.to_csv(args.output, index=False)
+            print(f"✓ Results saved successfully")
+            
+        elif args.window_size or args.region:
+            # Single region or genome-wide windowed analysis
+            print(f"\nCreating windows...")
+            genomic_ds.create_windows()
+            summary = genomic_ds.get_summary()
+            
+            if args.window_size:
+                print(f"  Window size: {args.window_size:,} bp")
+                print(f"  Step size: {args.step_size or args.window_size:,} bp")
+                print(f"  Minimum variants: {args.min_variants}")
+                print(f"  Number of windows: {summary['n_windows']:,}")
+            else:
+                print(f"  Genome-wide analysis")
+            
             window_stats = genomic_ds.calculate_windowed_stats(
                 stats=args.stats,
                 use_callable_sites=True

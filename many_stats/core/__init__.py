@@ -143,7 +143,11 @@ class GenomicDataset:
             
             if contig_idx is not None:
                 # Find variants in this region
-                region_mask = (contigs == contig_idx) & (positions >= start) & (positions < end)
+                # Convert BED (0-based) to VCF (1-based) coordinates
+                # BED [start, end) -> VCF positions (start+1) to end (inclusive)
+                vcf_start = start + 1
+                vcf_end = end
+                region_mask = (contigs == contig_idx) & (positions >= vcf_start) & (positions <= vcf_end)
                 mask |= region_mask
         
         return mask
