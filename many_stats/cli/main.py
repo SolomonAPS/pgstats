@@ -138,7 +138,7 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         default=['tajima_d', 'theta_pi', 'theta_w', 'theta_h'],
         choices=[
             # Neutrality tests
-            'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded', 'zeng_e',
+            'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded', 'zeng_e', 'fay_wu_h',
             # Theta estimators (primary names)
             'theta_pi', 'theta_w', 'theta_h', 'theta_l',
             # Backward compatibility aliases

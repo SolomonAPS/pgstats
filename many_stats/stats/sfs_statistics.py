@@ -347,6 +347,40 @@ def calculate_v_f_star(n: int, a1: float, a2: float) -> tuple[float, float]:
 
 
 @numba.njit
+def calculate_v_h(n: int, a1: float, a2: float) -> tuple[float, float]:
+    """
+    Calculate variance components for Fay and Wu's H test.
+    From Walsh and Lynch (2018) Equation 9.27c.
+    
+    The variance of (θ_π - θ_H) has the form: Var(θ_π - θ_H) = u_H * θ + v_H * θ²
+    
+    Exact textbook formula:
+    [(n-2) / 6(n-1)]θ + [(18n²)(3n+2)b_{n+1} - (88n³ + 9n² - 13n + 6) / 9n(n-1)²]θ²
+    
+    Args:
+        n: Sample size
+        a1: a₁ value
+        a2: a₂ value
+        
+    Returns:
+        tuple: (u_H, v_H) variance components
+    """
+    # Calculate b_{n+1} for the formula
+    b_n_plus_1 = calculate_b2(n + 1)
+    
+    # u_H = (n-2) / 6(n-1)
+    u_h = (n - 2.0) / (6.0 * (n - 1.0))
+    
+    # v_H = [(18n²)(3n+2)b_{n+1} - (88n³ + 9n² - 13n + 6)] / 9n(n-1)²
+    numerator = (18.0 * n * n) * (3.0 * n + 2.0) * b_n_plus_1 - (88.0 * n * n * n + 9.0 * n * n - 13.0 * n + 6.0)
+    denominator = 9.0 * n * (n - 1.0) * (n - 1.0)
+    
+    v_h = numerator / denominator
+    
+    return u_h, v_h
+
+
+@numba.njit
 def calculate_callable_sites_per_window(variant_matrix: np.ndarray) -> int:
     """
     Calculate the number of callable sites in a window.
@@ -616,7 +650,13 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     - Walsh and Lynch (2018) Equation 9.4
     - Wakeley (2009) Coalescent Theory, equation 4.39
     
-    Formula: θπ = 1/(n choose 2) * sum(i(n-i)ξᵢ) from i=1 to n-1
+    Textbook formula (Walsh & Lynch 2018, Equation 9.4):
+    θπ = (1/C(n,2)) * Σ[i=1 to n-1] i(n-i)ξᵢ
+    
+    Where:
+    - C(n,2) = n(n-1)/2 (number of pairs)
+    - ξᵢ = number of sites with i derived alleles
+    - n = sample size
     
     Args:
         ds: sgkit Dataset containing genotype calls
@@ -662,7 +702,13 @@ def theta_w(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     - Walsh and Lynch (2018) Equation 9.5
     - Wakeley (2009) Coalescent Theory, equation 4.40
     
-    Formula: θw = S/a₁ where S is the number of segregating sites
+    Textbook formula (Walsh & Lynch 2018, Equation 9.5):
+    θw = S/a₁
+    
+    Where:
+    - S = number of segregating sites
+    - a₁ = Σ[i=1 to n-1] 1/i (harmonic number)
+    - n = sample size
     
     Args:
         ds: sgkit Dataset containing genotype calls
@@ -708,7 +754,15 @@ def theta_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     - Walsh and Lynch (2018) Equation 9.6
     - Fay and Wu (2000), equation 2
     
-    Formula: θh = sum(i²ξᵢ) / (n(n-1))
+    Textbook formula (Walsh & Lynch 2018, Equation 9.6):
+    θh = (1/C(n,2)) * Σ[i=1 to n-1] i²ξᵢ
+    
+    Where:
+    - C(n,2) = n(n-1)/2 (number of pairs)
+    - ξᵢ = number of sites with i derived alleles
+    - n = sample size
+    
+    This estimator emphasizes high-frequency derived alleles.
     
     Args:
         ds: sgkit Dataset containing genotype calls
@@ -754,10 +808,15 @@ def theta_l(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     - Walsh and Lynch (2018) Equation 9.7
     - Zeng et al. (2006), equation 9.28a
     
-    Formula: θL = 1/(n-1) * sum(i·ξᵢ) from i=1 to n-1
+    Textbook formula (Walsh & Lynch 2018, Equation 9.7):
+    θL = (1/(n-1)) * Σ[i=1 to n-1] i·ξᵢ
     
-    This estimator is useful for detecting selective sweeps as it places more
-    weight on high-frequency alleles compared to Watterson's theta.
+    Where:
+    - ξᵢ = number of sites with i derived alleles
+    - n = sample size
+    
+    This estimator places more weight on high-frequency sites compared to θw,
+    making it useful for detecting selective sweeps.
     
     Args:
         ds: sgkit Dataset containing genotype calls
@@ -806,6 +865,20 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     References:
     - Walsh and Lynch (2018) Equation 9.8
     - Tajima (1989) and Wakeley (2009) equation 4.35
+    
+    Textbook formula (Walsh & Lynch 2018, Equation 9.8):
+    D = (θπ - θw) / sqrt(Var(θπ - θw))
+    
+    Where:
+    - θπ = nucleotide diversity (pairwise differences)
+    - θw = Watterson's theta (segregating sites)
+    - Var(θπ - θw) = c₁S + c₂S(S-1)
+    - c₁ = b₁ - 1/a₁
+    - c₂ = b₂ - (n+2)/(a₁n) + a₂/a₁²
+    - b₁ = (n+1)/(3(n-1))
+    - b₂ = 2(n²+n+3)/(9n(n-1))
+    - a₁ = Σ[i=1 to n-1] 1/i, a₂ = Σ[i=1 to n-1] 1/i²
+    - S = number of segregating sites
     
     Tajima's D tests for neutrality by comparing theta_pi and theta_w.
     
@@ -896,6 +969,27 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     References:
     - Walsh and Lynch (2018) Equation 9.26b (D*) and 9.26c (D)
     - Fu and Li (1993) Statistical tests of neutrality of mutations
+    
+    Textbook formulas (Walsh & Lynch 2018):
+    
+    D* (folded, Equation 9.26b):
+    D* = (S/a₁ - ((n-1)/n)η₁) / sqrt(Var(D*))
+    
+    D (unfolded, Equation 9.26c):
+    D = (S/a₁ - ζ₁) / sqrt(Var(D))
+    
+    Where:
+    - S = number of segregating sites
+    - a₁ = Σ[i=1 to n-1] 1/i (harmonic number)
+    - η₁ = number of sites with minor allele count = 1 (folded SFS)
+    - ζ₁ = number of sites with derived allele count = 1 (unfolded SFS)
+    - n = sample size
+    
+    Variance components (Equations 9.26b-c):
+    Var(D*) = α*S + β*S(S-1)
+    Var(D) = αS + βS(S-1)
+    
+    Where α*, β*, α, β are functions of harmonic numbers a₁, a₂, b₁, b₂.
     
     Fu and Li's D uses the unfolded SFS (ζᵢ) while D* uses the folded SFS (ηᵢ).
     Both are sensitive to population size changes.
@@ -1004,6 +1098,26 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     References:
     - Walsh and Lynch (2018) Equation 9.26e (F*) and 9.26f (F)
     - Fu and Li (1993) Statistical tests of neutrality of mutations
+    
+    Textbook formulas (Walsh & Lynch 2018):
+    
+    F* (folded, Equation 9.26e):
+    F* = (θπ - ((n-1)/n)η₁) / sqrt(Var(F*))
+    
+    F (unfolded, Equation 9.26f):
+    F = (θπ - ζ₁) / sqrt(Var(F))
+    
+    Where:
+    - θπ = nucleotide diversity (pairwise differences)
+    - η₁ = number of sites with minor allele count = 1 (folded SFS)
+    - ζ₁ = number of sites with derived allele count = 1 (unfolded SFS)
+    - n = sample size
+    
+    Variance components (Equations 9.26e-f):
+    Var(F*) = α_F*S + β_F*S(S-1)
+    Var(F) = α_FS + β_FS(S-1)
+    
+    Where α_F*, β_F*, α_F, β_F are functions of harmonic numbers a₁, a₂, b₁, b₂.
     
     Fu and Li's F uses the unfolded SFS (ζᵢ) while F* uses the folded SFS (ηᵢ).
     Both combine pairwise differences with singleton information.
@@ -1148,9 +1262,16 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     - Walsh and Lynch (2018) Equation 9.28c
     - Zeng et al. (2006), equation 9.28b
     
-    Formula: E = (θ_L - θ_S) / σ(E)
+    Textbook formula (Walsh & Lynch 2018, Equation 9.28c):
+    E = (θL - θw) / sqrt(Var(θL - θw))
     
-    Where θ_S is Watterson's theta (theta_w) and θ_L emphasizes high-frequency sites.
+    Where:
+    - θL = Zeng et al.'s theta emphasizing high-frequency sites
+    - θw = Watterson's theta (segregating sites)
+    - Var(θL - θw) = [n/(2(n-1)) - 1/a₁]θ + [b₂ + 2(n/(n-1))²b₂ - 2(nb₂-n+1)/((n-1)a₁) - (3n+1)/(n-1)]θ²
+    - a₁ = Σ[i=1 to n-1] 1/i, b₂ = 2(n²+n+3)/(9n(n-1))
+    - n = sample size
+    
     The E test is powerful for detecting selective sweeps and can persist longer
     after a sweep (up to 2N generations) compared to other tests.
     
@@ -1257,7 +1378,21 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
     - Walsh and Lynch (2018) Equation 9.26b (folded) and 9.26c (unfolded)
     - Fu and Li (1993) Statistical tests of neutrality of mutations
     
+    Textbook formulas (Walsh & Lynch 2018):
+    
+    Folded singletons (η₁, Equation 9.26b):
+    η₁ = number of sites with minor allele count = 1
+    
+    Unfolded singletons (ζ₁, Equation 9.26c):
+    ζ₁ = number of sites with derived allele count = 1
+    
+    Where:
+    - Minor allele count = min(derived_count, n - derived_count)
+    - Derived allele count = number of derived alleles in sample
+    - n = sample size
+    
     Singletons are sites where an allele appears only once in the sample.
+    They are used in Fu and Li's tests and are sensitive to population size changes.
     
     Args:
         ds: sgkit Dataset containing genotype calls
@@ -1305,6 +1440,108 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
         result["singletons_folded"] = (["variants"], singleton_values)
     else:
         result["singletons_unfolded"] = (["variants"], singleton_values)
+    
+    return result
+
+
+def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
+    """
+    Calculate Fay and Wu's H statistic for each variant.
+    
+    References:
+    - Walsh and Lynch (2018) Equation 9.27b
+    - Fay and Wu (2000) Statistical tests of neutrality of mutations
+    - Zeng et al. (2006) Statistical Tests for Detecting Positive Selection
+    
+    Textbook formula (Walsh & Lynch 2018, Equation 9.27b):
+    H = (θπ - θh) / sqrt(Var(θπ - θh))
+    
+    Where:
+    - θπ = nucleotide diversity (pairwise differences)
+    - θh = Fay and Wu's theta emphasizing high-frequency derived alleles
+    - Var(θπ - θh) = u_Hθ + v_Hθ²
+    
+    Variance formula (Equation 9.27c):
+    u_H = (n-2)/(6(n-1))
+    v_H = [(18n²)(3n+2)b_{n+1} - (88n³ + 9n² - 13n + 6)] / 9n(n-1)²
+    
+    Where:
+    - b_{n+1} = 2((n+1)²+(n+1)+3)/(9(n+1)(n+1-1)) = 2(n²+3n+5)/(9n(n+1))
+    - n = sample size
+    
+    Fay and Wu's H tests for neutrality by comparing theta_pi and theta_h.
+    
+    Note: Following scikit-allel and sgkit conventions, harmonic numbers (a1, a2, etc.)
+    are calculated using the maximum observed sample size across all variants.
+    This maintains theoretical consistency with the assumption of constant n.
+    
+    Args:
+        ds: sgkit Dataset containing genotype calls
+        call_genotype: Name of the genotype variable
+        
+    Returns:
+        Dataset with Fay and Wu's H values
+    """
+    # Convert genotypes to variant matrix format
+    genotypes = ds[call_genotype].values
+    n_variants, n_samples, ploidy = genotypes.shape
+    
+    # Convert to binary matrix
+    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
+    
+    for i in range(n_variants):
+        for j in range(n_samples):
+            # Check for missing data first
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1  # Mark as missing
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    
+    # Calculate sample sizes for each variant
+    n = np.sum(variant_matrix != -1, axis=1)
+    max_n = np.max(n)
+    
+    if max_n <= 1:
+        # No valid data, return zeros
+        result = ds.copy()
+        result["fay_wu_h"] = (["variants"], np.zeros(n_variants))
+        return result
+    
+    # Calculate harmonic numbers once using max_n
+    a1 = calculate_a1(max_n)
+    a2 = calculate_a2(max_n)
+    u_h, v_h = calculate_v_h(max_n, a1, a2)
+    
+    # Calculate Fay and Wu's H for each variant
+    fay_wu_h_values = np.zeros(n_variants)
+    
+    for i in range(n_variants):
+        # Get SFS for this variant
+        sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
+        S = calculate_S(sfs)
+        
+        if S == 0:
+            fay_wu_h_values[i] = 0.0
+            continue
+            
+        pi = calculate_pi(variant_matrix[i:i+1, :])
+        theta_h_val = calculate_theta_h_per_site(variant_matrix[i:i+1, :])
+        
+        # Calculate variance using max_n harmonic numbers
+        var_h = u_h * S + v_h * S * (S - 1)
+        
+        if var_h <= 0:
+            if S == 1:
+                fay_wu_h_values[i] = (pi - theta_h_val) / np.sqrt(abs(u_h))
+            else:
+                fay_wu_h_values[i] = 0.0
+        else:
+            fay_wu_h_values[i] = (pi - theta_h_val) / np.sqrt(var_h)
+    
+    # Create output dataset
+    result = ds.copy()
+    result["fay_wu_h"] = (["variants"], fay_wu_h_values)
     
     return result
 

@@ -18,7 +18,7 @@ import sgkit as sg
 from many_stats.io.loaders import load_vcf_simple
 from many_stats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
-    theta_pi, theta_w, theta_h, theta_l
+    theta_pi, theta_w, theta_h, theta_l, fay_wu_h
 )
 from many_stats.stats.ld_statistics import (
     calculate_ld_matrix, calculate_windowed_ld
@@ -455,6 +455,9 @@ class GenomicDataset:
             elif stat == 'zeng_e':
                 stat_ds = zeng_e(self.windowed_dataset)
                 result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'fay_wu_h':
+                stat_ds = fay_wu_h(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
             elif stat == 'ld_matrix':
                 # Calculate LD matrix for each window
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
@@ -535,8 +538,9 @@ class GenomicDataset:
             elif stat == 'zeng_e':
                 result_ds = zeng_e(self.dataset)
                 results[stat] = np.mean(result_ds['zeng_e'].values)
-            else:
-                results[stat] = np.nan
+            elif stat == 'fay_wu_h':
+                result_ds = fay_wu_h(self.dataset)
+                results[stat] = np.mean(result_ds['fay_wu_h'].values)
         
         # Print mean statistics
         print(f"\nGenome-wide Statistics:")
@@ -721,7 +725,7 @@ class GenomicDataset:
             
             # Add statistics (only variables that look like statistics)
             stat_names = [
-                'tajima_d', 'fu_li_d', 'fu_li_f', 'zeng_e',
+                'tajima_d', 'fu_li_d', 'fu_li_f', 'zeng_e', 'fay_wu_h',
                 'theta_pi', 'theta_w', 'theta_h', 'theta_l',
                 # Backward compatibility
                 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta', 'pi'

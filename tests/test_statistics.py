@@ -15,6 +15,8 @@ from many_stats.stats.sfs_statistics import (
     theta_pi,
     theta_w,
     theta_h,
+    fay_wu_h,
+    dh_joint_test,
     # Low-level functions for testing
     calculate_a1,
     calculate_a2,
@@ -349,6 +351,90 @@ class TestNumbaFunctions:
         
         # Should be non-negative
         assert theta_h >= 0
+
+
+class TestFayWuH:
+    """Tests for Fay and Wu's H statistic."""
+    
+    def test_fay_wu_h_basic(self):
+        """Test basic Fay and Wu's H calculation."""
+        ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20, missing_pct=0.0)
+        
+        result = fay_wu_h(ds)
+        
+        assert 'fay_wu_h' in result.data_vars
+        assert len(result.fay_wu_h) == 50
+        # Values should be finite
+        assert np.all(np.isfinite(result.fay_wu_h.values))
+    
+    def test_fay_wu_h_with_missing(self):
+        """Test Fay and Wu's H with missing data."""
+        ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20, missing_pct=0.2)
+        
+        result = fay_wu_h(ds)
+        
+        assert 'fay_wu_h' in result.data_vars
+        # Should handle missing data gracefully
+        assert np.all(np.isfinite(result.fay_wu_h.values) | np.isnan(result.fay_wu_h.values))
+    
+    def test_fay_wu_h_monomorphic(self):
+        """Test Fay and Wu's H with monomorphic sites."""
+        # Create dataset with all same genotype
+        genotypes = np.zeros((10, 20, 2), dtype=np.int8)
+        
+        ds = xr.Dataset({
+            'call_genotype': (['variants', 'samples', 'ploidy'], genotypes),
+            'variant_position': (['variants'], np.arange(10)),
+            'variant_contig': (['variants'], np.zeros(10, dtype=int)),
+            'variant_allele': (['variants', 'alleles'], np.array([['A', 'T']] * 10))
+        })
+        
+        result = fay_wu_h(ds)
+        
+        assert 'fay_wu_h' in result.data_vars
+        # All values should be 0 for monomorphic sites
+        assert np.all(result.fay_wu_h.values == 0)
+
+
+class TestDHJointTest:
+    """Tests for DH joint test combining Tajima's D and Fay and Wu's H."""
+    
+    def test_dh_joint_test_basic(self):
+        """Test basic DH joint test calculation."""
+        ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20, missing_pct=0.0)
+        
+        result = dh_joint_test(ds)
+        
+        # Should contain both statistics
+        assert 'tajima_d' in result.data_vars
+        assert 'fay_wu_h' in result.data_vars
+        assert len(result.tajima_d) == 50
+        assert len(result.fay_wu_h) == 50
+        
+        # Values should be finite
+        assert np.all(np.isfinite(result.tajima_d.values))
+        assert np.all(np.isfinite(result.fay_wu_h.values))
+    
+    def test_dh_joint_test_consistency(self):
+        """Test that DH joint test gives same results as individual tests."""
+        ds = sg.simulate_genotype_call_dataset(n_variant=30, n_sample=15, missing_pct=0.1)
+        
+        # Calculate individually
+        tajima_result = tajima_d(ds)
+        fay_wu_result = fay_wu_h(ds)
+        
+        # Calculate jointly
+        joint_result = dh_joint_test(ds)
+        
+        # Results should be identical
+        np.testing.assert_array_almost_equal(
+            joint_result.tajima_d.values, 
+            tajima_result.tajima_d.values
+        )
+        np.testing.assert_array_almost_equal(
+            joint_result.fay_wu_h.values, 
+            fay_wu_result.fay_wu_h.values
+        )
 
 
 if __name__ == "__main__":

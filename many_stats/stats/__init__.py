@@ -23,6 +23,7 @@ from .sfs_statistics import (
     fu_li_d_unfolded,
     fu_li_f_unfolded,
     zeng_e,
+    fay_wu_h,
     # SFS components
     singletons,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "fu_li_d_unfolded",
     "fu_li_f_unfolded",
     "zeng_e",
+    "fay_wu_h",
     
     # SFS components
     "singletons",
