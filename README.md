@@ -20,7 +20,7 @@ A comprehensive statistical genomics toolkit built on top of [sgkit](https://git
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/many-stats.git
+git clone https://github.com/SolomonAPS/many-stats.git
 cd many-stats
 pip install -e .
 ```
