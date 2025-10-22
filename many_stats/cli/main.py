@@ -135,16 +135,22 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         '-s', '--stats',
         type=str,
         nargs='+',
-        default=['tajima_d', 'theta_pi', 'theta_w', 'theta_h'],
+        default='all',
         choices=[
             # Neutrality tests
             'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded', 'zeng_e', 'fay_wu_h',
             # Theta estimators (primary names)
             'theta_pi', 'theta_w', 'theta_h', 'theta_l',
             # Backward compatibility aliases
-            'pi', 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta'
+            'pi', 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta',
+            # LD statistics
+            'ld_d', 'ld_dprime', 'ld_r2',
+            # Haplotype statistics
+            'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
+            # Special option
+            'all'
         ],
-        help='Statistics to calculate (default: tajima_d theta_pi theta_w theta_h)'
+        help='Statistics to calculate (default: all)'
     )
     
     # Windowing options
@@ -400,8 +406,23 @@ def run_stats_command(args):
         print(f"  Retained variants: {summary['n_variants']:,}")
     
     # Calculate statistics
-    logger.info(f"Calculating statistics: {', '.join(args.stats)}")
-    print(f"\nCalculating statistics: {', '.join(args.stats)}")
+    # Handle "all" option
+    if args.stats == ['all']:
+        stats_to_calculate = [
+            # Neutrality tests
+            'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded', 'zeng_e', 'fay_wu_h',
+            # Theta estimators
+            'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+            # LD statistics
+            'ld_d', 'ld_dprime', 'ld_r2',
+            # Haplotype statistics
+            'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1'
+        ]
+    else:
+        stats_to_calculate = args.stats
+    
+    logger.info(f"Calculating statistics: {', '.join(stats_to_calculate)}")
+    print(f"\nCalculating statistics: {', '.join(stats_to_calculate)}")
     
     try:
         if regions_list:
@@ -414,7 +435,7 @@ def run_stats_command(args):
                 regions=regions_list,
                 window_size=args.window_size,
                 step_size=args.step_size,
-                stats=args.stats,
+                stats=stats_to_calculate,
                 min_variants=args.min_variants,
                 use_callable_sites=True
             )
@@ -442,7 +463,7 @@ def run_stats_command(args):
                 print(f"  Genome-wide analysis")
             
             window_stats = genomic_ds.calculate_windowed_stats(
-                stats=args.stats,
+                stats=stats_to_calculate,
                 use_callable_sites=True
             )
             print(f"  Calculated statistics for {len(window_stats.windows)} windows")
@@ -454,7 +475,7 @@ def run_stats_command(args):
             print(f"✓ Results saved successfully")
         else:
             # Genome-wide analysis
-            genome_stats = genomic_ds.calculate_genome_wide_stats(stats=args.stats)
+            genome_stats = genomic_ds.calculate_genome_wide_stats(stats=stats_to_calculate)
             print(f"  Genome-wide results:")
             for stat, value in genome_stats.items():
                 print(f"    {stat}: {value:.6f}")
