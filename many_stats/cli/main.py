@@ -68,6 +68,14 @@ Examples:
   many-stats stats input.vcf.gz --output results.csv \\
       --bed callable_sites.bed --regions-file target_regions.bed \\
       --window-size 50000 --max-missing 0.1
+  
+  # With non-callable regions (default behavior)
+  many-stats stats input.vcf.gz --output results.csv \\
+      --bed repetitive_regions.bed --bed-format non_callable
+  
+  # With callable regions only
+  many-stats stats input.vcf.gz --output results.csv \\
+      --bed high_quality_regions.bed --bed-format callable
 
 For more information, visit: https://github.com/yourusername/many-stats
         """
@@ -197,7 +205,14 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         '-b', '--bed',
         type=str,
         metavar='FILE',
-        help='BED file with callable sites'
+        help='BED file with callable sites (see --bed-format for interpretation)'
+    )
+    filter_group.add_argument(
+        '--bed-format',
+        type=str,
+        choices=['callable', 'non_callable'],
+        default='non_callable',
+        help='BED file format: "callable" (regions to include) or "non_callable" (regions to exclude) (default: non_callable)'
     )
     filter_group.add_argument(
         '--max-missing',
@@ -371,6 +386,7 @@ def run_stats_command(args):
     # Configure callable sites
     callable_config = CallableSitesConfig(
         bed_file=args.bed,
+        bed_format=args.bed_format,
         max_missing=args.max_missing
     )
     
@@ -519,7 +535,7 @@ def run_info_command(args):
         if not bed_path.exists():
             logger.error(f"BED file not found: {bed_path}")
             sys.exit(1)
-        callable_config = CallableSitesConfig(bed_file=args.bed)
+        callable_config = CallableSitesConfig(bed_file=args.bed, bed_format=args.bed_format)
     
     # Load dataset
     print(f"Loading dataset: {input_path}")
