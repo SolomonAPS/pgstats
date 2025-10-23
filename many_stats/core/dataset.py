@@ -60,7 +60,8 @@ class GenomicDataset:
     def __init__(self, 
                  data_source: Union[str, xr.Dataset],
                  callable_config: Optional[CallableSitesConfig] = None,
-                 window_config: Optional[WindowConfig] = None):
+                 window_config: Optional[WindowConfig] = None,
+                 keep_zarr: bool = False):
         """
         Initialize GenomicDataset.
         
@@ -68,6 +69,7 @@ class GenomicDataset:
             data_source: Path to VCF file or existing sgkit Dataset
             callable_config: Configuration for callable sites handling
             window_config: Configuration for windowed analysis
+            keep_zarr: Whether to keep intermediate Zarr files (VCF only)
         """
         self.callable_config = callable_config or CallableSitesConfig()
         self.window_config = window_config or WindowConfig()
@@ -81,7 +83,7 @@ class GenomicDataset:
                 self.dataset = sg.load_dataset(data_source)
             else:
                 # Load VCF
-                self.dataset = load_vcf_simple(data_source)
+                self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr)
         else:
             self.dataset = data_source
         
@@ -258,26 +260,45 @@ class GenomicDataset:
         if window_size is None and start is None and end is None:
             # Genome-wide analysis
             print("Creating genome-wide window")
-            self.windowed_dataset = sg.window_by_genome(self.dataset)
+            try:
+                self.windowed_dataset = sg.window_by_genome(self.dataset)
+            except Exception as e:
+                raise ValueError(f"Failed to create genome-wide window: {e}")
         else:
             # Windowed analysis
             if start is not None and end is not None:
                 print(f"Creating windows for region {start}-{end}")
                 # Filter dataset to region first
                 region_dataset = self._filter_to_region(start, end)
-                self.windowed_dataset = sg.window_by_position(
-                    region_dataset,
-                    size=window_size or 1000,
-                    step=step_size or window_size or 1000
-                )
+                
+                # Check if region has any variants
+                if len(region_dataset.variants) == 0:
+                    raise ValueError(f"No variants found in region {start}-{end}")
+                
+                try:
+                    self.windowed_dataset = sg.window_by_position(
+                        region_dataset,
+                        size=window_size or 1000,
+                        step=step_size or window_size or 1000
+                    )
+                except Exception as e:
+                    raise ValueError(f"Failed to create windows for region {start}-{end}: {e}")
             else:
                 print(f"Creating position-based windows with size {window_size}")
-                self.windowed_dataset = sg.window_by_position(
-                    self.dataset,
-                    size=window_size,
-                    step=step_size
-                )
+                try:
+                    self.windowed_dataset = sg.window_by_position(
+                        self.dataset,
+                        size=window_size,
+                        step=step_size
+                    )
+                except Exception as e:
+                    raise ValueError(f"Failed to create position-based windows: {e}")
         
+        # Check if windowing was successful
+        if self.windowed_dataset is None:
+            print("Warning: Window creation failed. No windows available.")
+            return
+            
         n_windows = len(self.windowed_dataset.windows)
         print(f"Created {n_windows} windows")
         
@@ -297,7 +318,11 @@ class GenomicDataset:
         if window_size is None:
             return  # No windowing, so no boundary issues
         
-        # Get contig information
+        # Get contig information - check if contig_length exists
+        if 'contig_length' not in self.dataset.data_vars:
+            print("Warning: No contig_length information available. Skipping boundary checks.")
+            return
+            
         contig_lengths = self.dataset.contig_length.values
         contig_ids = self.dataset.contig_id.values
         
@@ -396,8 +421,15 @@ class GenomicDataset:
         positions = self.dataset.variant_position.values
         region_mask = (positions >= start) & (positions <= end)
         
+        # Check if any variants match the region
+        n_variants = np.sum(region_mask)
+        if n_variants == 0:
+            print(f"Filtered to region {start}-{end}: 0 variants")
+            # Return empty dataset with same structure
+            return self.dataset.isel(variants=slice(0, 0))
+        
         filtered_dataset = self.dataset.isel(variants=region_mask)
-        print(f"Filtered to region {start}-{end}: {np.sum(region_mask)} variants")
+        print(f"Filtered to region {start}-{end}: {n_variants} variants")
         
         return filtered_dataset
     

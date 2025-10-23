@@ -76,6 +76,10 @@ Examples:
   # With callable regions only
   many-stats stats input.vcf.gz --output results.csv \\
       --bed high_quality_regions.bed --bed-format callable
+  
+  # Keep Zarr files for faster re-runs
+  many-stats stats input.vcf.gz --output results.csv \\
+      --keep-zarr --window-size 100000
 
 For more information, visit: https://github.com/yourusername/many-stats
         """
@@ -220,6 +224,11 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         default=0.0,
         metavar='FLOAT',
         help='Maximum proportion of missing data per variant (default: 0.0)'
+    )
+    filter_group.add_argument(
+        '--keep-zarr',
+        action='store_true',
+        help='Keep intermediate Zarr files for faster re-runs (saves VCF conversion time)'
     )
     
     # Output options
@@ -398,7 +407,8 @@ def run_stats_command(args):
         genomic_ds = GenomicDataset(
             data_source=str(input_path),
             callable_config=callable_config,
-            window_config=window_config
+            window_config=window_config,
+            keep_zarr=args.keep_zarr
         )
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
@@ -543,7 +553,8 @@ def run_info_command(args):
     try:
         genomic_ds = GenomicDataset(
             data_source=str(input_path),
-            callable_config=callable_config
+            callable_config=callable_config,
+            keep_zarr=args.keep_zarr
         )
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")

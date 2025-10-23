@@ -9,6 +9,47 @@ import xarray as xr
 import bio2zarr.vcf as v2z
 from typing import Optional, Union, List
 from pathlib import Path
+import hashlib
+import time
+
+
+def _get_vcf_hash(vcf_paths: List[str]) -> str:
+    """Generate a hash of VCF file(s) for cache validation."""
+    hasher = hashlib.md5()
+    for vcf_path in sorted(vcf_paths):
+        path = Path(vcf_path)
+        if path.exists():
+            # Include file size and modification time
+            stat = path.stat()
+            hasher.update(f"{path.name}:{stat.st_size}:{stat.st_mtime}".encode())
+    return hasher.hexdigest()
+
+
+def _is_zarr_up_to_date(zarr_path: Path, vcf_paths: List[str]) -> bool:
+    """Check if Zarr file is up-to-date with VCF file(s)."""
+    if not zarr_path.exists():
+        return False
+    
+    # Check if metadata file exists and contains VCF hash
+    metadata_file = zarr_path / ".vcf_metadata"
+    if not metadata_file.exists():
+        return False
+    
+    try:
+        with open(metadata_file, 'r') as f:
+            stored_hash = f.read().strip()
+        current_hash = _get_vcf_hash(vcf_paths)
+        return stored_hash == current_hash
+    except:
+        return False
+
+
+def _save_zarr_metadata(zarr_path: Path, vcf_paths: List[str]):
+    """Save VCF metadata to Zarr directory for cache validation."""
+    metadata_file = zarr_path / ".vcf_metadata"
+    vcf_hash = _get_vcf_hash(vcf_paths)
+    with open(metadata_file, 'w') as f:
+        f.write(vcf_hash)
 
 
 def load_vcf(vcf_path: Union[str, List[str]], 
@@ -69,6 +110,12 @@ def load_vcf(vcf_path: Union[str, List[str]],
     else:
         zarr_path = temp_dir / "combined.vcz"
     
+    # Check if we can reuse existing Zarr file
+    if _is_zarr_up_to_date(zarr_path, vcf_paths):
+        print(f"Reusing existing Zarr file: {zarr_path}")
+        dataset = sg.load_dataset(str(zarr_path), **kwargs)
+        return dataset
+    
     try:
         # Convert VCF to Zarr using bio2zarr Python API
         print(f"Converting VCF to Zarr: {zarr_path}")
@@ -80,6 +127,9 @@ def load_vcf(vcf_path: Union[str, List[str]],
             worker_processes=worker_processes,
             show_progress=show_progress
         )
+        
+        # Save metadata for future cache validation
+        _save_zarr_metadata(zarr_path, vcf_paths)
         
         # Load Zarr dataset with sgkit
         print(f"Loading Zarr dataset: {zarr_path}")
@@ -97,7 +147,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
             shutil.rmtree(zarr_path)
 
 
-def load_vcf_simple(vcf_path: Union[str, List[str]], **kwargs) -> xr.Dataset:
+def load_vcf_simple(vcf_path: Union[str, List[str]], keep_zarr: bool = False, **kwargs) -> xr.Dataset:
     """
     Simple VCF loading function with automatic cleanup.
     
@@ -106,12 +156,13 @@ def load_vcf_simple(vcf_path: Union[str, List[str]], **kwargs) -> xr.Dataset:
     
     Args:
         vcf_path: Path to VCF file (.vcf or .vcf.gz) or list of VCF files
+        keep_zarr: Whether to keep the intermediate Zarr files
         **kwargs: Additional arguments passed to load_vcf
         
     Returns:
         sgkit Dataset
     """
-    return load_vcf(vcf_path, keep_zarr=False, **kwargs)
+    return load_vcf(vcf_path, keep_zarr=keep_zarr, **kwargs)
 
 
 def load_zarr(zarr_path: str, **kwargs) -> xr.Dataset:
