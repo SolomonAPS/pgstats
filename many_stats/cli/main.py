@@ -473,6 +473,7 @@ def run_stats_command(args):
             print(f"  Window size: {args.window_size:,} bp")
             print(f"  Step size: {args.step_size or args.window_size:,} bp")
             print(f"  Minimum variants: {args.min_variants}")
+            print(f"\nStarting statistics calculation across {len(regions_list)} regions...")
             
             results_df = genomic_ds.calculate_stats_for_regions(
                 regions=regions_list,
@@ -505,6 +506,7 @@ def run_stats_command(args):
             else:
                 print(f"  Genome-wide analysis")
             
+            print(f"\nStarting statistics calculation...")
             window_stats = genomic_ds.calculate_windowed_stats(
                 stats=stats_to_calculate,
                 use_callable_sites=True
@@ -518,6 +520,7 @@ def run_stats_command(args):
             print(f"✓ Results saved successfully")
         else:
             # Genome-wide analysis
+            print(f"\nStarting genome-wide statistics calculation...")
             genome_stats = genomic_ds.calculate_genome_wide_stats(stats=stats_to_calculate)
             print(f"  Genome-wide results:")
             for stat, value in genome_stats.items():
