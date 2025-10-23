@@ -55,6 +55,7 @@ def _save_zarr_metadata(zarr_path: Path, vcf_paths: List[str]):
 def load_vcf(vcf_path: Union[str, List[str]], 
              temp_dir: Optional[str] = None,
              keep_zarr: bool = False,
+             output_dir: Optional[str] = None,
              variants_chunk_size: Optional[int] = None,
              samples_chunk_size: Optional[int] = None,
              worker_processes: int = 0,
@@ -98,7 +99,17 @@ def load_vcf(vcf_path: Union[str, List[str]],
     
     # Set up temporary directory
     if temp_dir is None:
-        temp_dir = tempfile.mkdtemp(prefix="vcf2zarr_")
+        if keep_zarr:
+            if output_dir:
+                # If keeping Zarr files and output directory specified, use output directory
+                temp_dir = output_dir
+            else:
+                # If keeping Zarr files but no output directory, use directory next to VCF
+                vcf_dir = Path(vcf_paths[0]).parent
+                temp_dir = vcf_dir
+        else:
+            # If not keeping Zarr files, use system temp
+            temp_dir = tempfile.mkdtemp(prefix="vcf2zarr_")
     else:
         os.makedirs(temp_dir, exist_ok=True)
     
@@ -147,7 +158,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
             shutil.rmtree(zarr_path)
 
 
-def load_vcf_simple(vcf_path: Union[str, List[str]], keep_zarr: bool = False, **kwargs) -> xr.Dataset:
+def load_vcf_simple(vcf_path: Union[str, List[str]], keep_zarr: bool = False, temp_dir: Optional[str] = None, output_dir: Optional[str] = None, **kwargs) -> xr.Dataset:
     """
     Simple VCF loading function with automatic cleanup.
     
@@ -157,12 +168,14 @@ def load_vcf_simple(vcf_path: Union[str, List[str]], keep_zarr: bool = False, **
     Args:
         vcf_path: Path to VCF file (.vcf or .vcf.gz) or list of VCF files
         keep_zarr: Whether to keep the intermediate Zarr files
+        temp_dir: Custom directory for Zarr files (overrides default logic)
+        output_dir: Output directory for analysis (used for Zarr location with --keep-zarr)
         **kwargs: Additional arguments passed to load_vcf
         
     Returns:
         sgkit Dataset
     """
-    return load_vcf(vcf_path, keep_zarr=keep_zarr, **kwargs)
+    return load_vcf(vcf_path, keep_zarr=keep_zarr, temp_dir=temp_dir, output_dir=output_dir, **kwargs)
 
 
 def load_zarr(zarr_path: str, **kwargs) -> xr.Dataset:

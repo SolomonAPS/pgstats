@@ -61,7 +61,9 @@ class GenomicDataset:
                  data_source: Union[str, xr.Dataset],
                  callable_config: Optional[CallableSitesConfig] = None,
                  window_config: Optional[WindowConfig] = None,
-                 keep_zarr: bool = False):
+                 keep_zarr: bool = False,
+                 zarr_dir: Optional[str] = None,
+                 output_dir: Optional[str] = None):
         """
         Initialize GenomicDataset.
         
@@ -70,6 +72,8 @@ class GenomicDataset:
             callable_config: Configuration for callable sites handling
             window_config: Configuration for windowed analysis
             keep_zarr: Whether to keep intermediate Zarr files (VCF only)
+            zarr_dir: Custom directory for Zarr files (overrides default logic)
+            output_dir: Output directory for analysis (used for Zarr location with --keep-zarr)
         """
         self.callable_config = callable_config or CallableSitesConfig()
         self.window_config = window_config or WindowConfig()
@@ -83,7 +87,7 @@ class GenomicDataset:
                 self.dataset = sg.load_dataset(data_source)
             else:
                 # Load VCF
-                self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr)
+                self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr, temp_dir=zarr_dir, output_dir=output_dir)
         else:
             self.dataset = data_source
         

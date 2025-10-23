@@ -77,9 +77,13 @@ Examples:
   many-stats stats input.vcf.gz --output results.csv \\
       --bed high_quality_regions.bed --bed-format callable
   
-  # Keep Zarr files for faster re-runs
+  # Keep Zarr files for faster re-runs (saved next to output file)
   many-stats stats input.vcf.gz --output results.csv \\
       --keep-zarr --window-size 100000
+  
+  # Specify custom Zarr directory (useful for clusters)
+  many-stats stats input.vcf.gz --output results.csv \\
+      --keep-zarr --zarr-dir /work/users/s/o/solsloat/zarr_cache
 
 For more information, visit: https://github.com/yourusername/many-stats
         """
@@ -228,7 +232,13 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
     filter_group.add_argument(
         '--keep-zarr',
         action='store_true',
-        help='Keep intermediate Zarr files for faster re-runs (saves VCF conversion time)'
+        help='Keep intermediate Zarr files for faster re-runs. Files saved next to output file by default.'
+    )
+    filter_group.add_argument(
+        '--zarr-dir',
+        type=str,
+        metavar='DIR',
+        help='Directory to store Zarr files (overrides default: next to output file with --keep-zarr)'
     )
     
     # Output options
@@ -399,6 +409,11 @@ def run_stats_command(args):
         max_missing=args.max_missing
     )
     
+    # Extract output directory for Zarr file placement
+    output_dir = None
+    if args.output:
+        output_dir = str(Path(args.output).parent)
+    
     # Load dataset
     logger.info(f"Loading data from {input_path}")
     print(f"Loading VCF: {input_path}")
@@ -408,7 +423,9 @@ def run_stats_command(args):
             data_source=str(input_path),
             callable_config=callable_config,
             window_config=window_config,
-            keep_zarr=args.keep_zarr
+            keep_zarr=args.keep_zarr,
+            zarr_dir=args.zarr_dir,
+            output_dir=output_dir
         )
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
@@ -547,6 +564,11 @@ def run_info_command(args):
             sys.exit(1)
         callable_config = CallableSitesConfig(bed_file=args.bed, bed_format=args.bed_format)
     
+    # Extract output directory for Zarr file placement
+    output_dir = None
+    if args.output:
+        output_dir = str(Path(args.output).parent)
+    
     # Load dataset
     print(f"Loading dataset: {input_path}")
     
@@ -554,7 +576,9 @@ def run_info_command(args):
         genomic_ds = GenomicDataset(
             data_source=str(input_path),
             callable_config=callable_config,
-            keep_zarr=args.keep_zarr
+            keep_zarr=args.keep_zarr,
+            zarr_dir=args.zarr_dir,
+            output_dir=output_dir
         )
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
