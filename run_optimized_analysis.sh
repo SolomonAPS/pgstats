@@ -1,15 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=many-stats-optimized
+#SBATCH --job-name=many-stats
 #SBATCH --output=many-stats_%j.out
 #SBATCH --error=many-stats_%j.err
-#SBATCH --time=04:00:00
-#SBATCH --mem=32G
+#SBATCH --time=06:00:00
+#SBATCH --mem=64G
 #SBATCH --cpus-per-task=8
 #SBATCH --partition=general
-
-# Load modules
-module load python
-module load conda
 
 # Initialize conda for this shell session
 eval "$(conda shell.bash hook)"
@@ -18,21 +14,18 @@ eval "$(conda shell.bash hook)"
 conda activate many-stats
 
 # Change to working directory
-cd /nas/longleaf/home/solsloat/stats
+cd /proj/johrilab/projects/DFEpos/dpgp3/stats/
 
-# Run many-stats analysis with optimizations
-echo "Starting optimized many-stats analysis..."
-echo "Using --keep-zarr for faster future runs"
-
+# Run many-stats analysis
 many-stats stats \
     ../vcf/merged_biallelic_snps.vcf.gz \
     --bed uncallable_sites.bed \
-    --bed-format callable \
+    --bed-format non_callable \
     --regions-file regions.bed \
     --window-size 1000 \
     --step-size 1000 \
+    --output results.csv \
     --keep-zarr \
-    --output results.csv
+    --zarr-dir /proj/johrilab/projects/DFEpos/dpgp3/stats
 
 echo "Analysis completed successfully!"
-echo "Zarr files preserved for faster future runs"
