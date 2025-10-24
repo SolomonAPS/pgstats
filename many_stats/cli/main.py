@@ -416,7 +416,7 @@ def run_stats_command(args):
     
     # Load dataset
     logger.info(f"Loading data from {input_path}")
-    print(f"Loading VCF: {input_path}")
+    print(f"Loading VCF: {input_path}", flush=True)
     
     try:
         genomic_ds = GenomicDataset(
@@ -433,20 +433,20 @@ def run_stats_command(args):
     
     # Print dataset summary
     summary = genomic_ds.get_summary()
-    print(f"\nDataset Summary:")
-    print(f"  Variants: {summary['n_variants']:,}")
-    print(f"  Samples: {summary['n_samples']:,}")
-    print(f"  Contigs: {summary['n_contigs']:,}")
+    print(f"\nDataset Summary:", flush=True)
+    print(f"  Variants: {summary['n_variants']:,}", flush=True)
+    print(f"  Samples: {summary['n_samples']:,}", flush=True)
+    print(f"  Contigs: {summary['n_contigs']:,}", flush=True)
     if summary['callable_sites']:
-        print(f"  Callable sites: {summary['callable_sites']:,}")
+        print(f"  Callable sites: {summary['callable_sites']:,}", flush=True)
     
     # Filter missing data if needed
     if args.max_missing > 0:
         logger.info(f"Filtering variants with >{args.max_missing:.1%} missing data")
-        print(f"\nFiltering variants with >{args.max_missing:.1%} missing data...")
+        print(f"\nFiltering variants with >{args.max_missing:.1%} missing data...", flush=True)
         genomic_ds.filter_missing_data()
         summary = genomic_ds.get_summary()
-        print(f"  Retained variants: {summary['n_variants']:,}")
+        print(f"  Retained variants: {summary['n_variants']:,}", flush=True)
     
     # Calculate statistics
     # Handle "all" option
@@ -465,7 +465,7 @@ def run_stats_command(args):
         stats_to_calculate = args.stats
     
     logger.info(f"Calculating statistics: {', '.join(stats_to_calculate)}")
-    print(f"\nCalculating statistics: {', '.join(stats_to_calculate)}")
+    print(f"\nCalculating statistics: {', '.join(stats_to_calculate)}", flush=True)
     
     try:
         if regions_list:

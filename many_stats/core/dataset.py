@@ -138,7 +138,7 @@ class GenomicDataset:
         # Create non-callable sites mask and apply it
         self._apply_callable_sites_mask(bed_df)
         
-        print(f"Applied callable sites mask: {self.callable_sites:,} callable sites")
+        print(f"Applied callable sites mask: {self.callable_sites:,} callable sites", flush=True)
     
     def _apply_callable_sites_mask(self, bed_df: pd.DataFrame):
         """
@@ -214,7 +214,7 @@ class GenomicDataset:
         self.non_callable_mask = non_callable_mask
         self.callable_sites = np.sum(callable_mask)
         
-        print(f"Masked {np.sum(non_callable_mask):,} non-callable sites as missing data")
+        print(f"Masked {np.sum(non_callable_mask):,} non-callable sites as missing data", flush=True)
     
     def filter_missing_data(self, max_missing: Optional[float] = None):
         """
@@ -263,7 +263,7 @@ class GenomicDataset:
         
         if window_size is None and start is None and end is None:
             # Genome-wide analysis
-            print("Creating genome-wide window")
+            print("Creating genome-wide window", flush=True)
             try:
                 self.windowed_dataset = sg.window_by_genome(self.dataset)
             except Exception as e:
@@ -271,7 +271,7 @@ class GenomicDataset:
         else:
             # Windowed analysis
             if start is not None and end is not None:
-                print(f"Creating windows for region {start}-{end}")
+                print(f"Creating windows for region {start}-{end}", flush=True)
                 # Filter dataset to region first
                 region_dataset = self._filter_to_region(start, end)
                 
@@ -288,7 +288,7 @@ class GenomicDataset:
                 except Exception as e:
                     raise ValueError(f"Failed to create windows for region {start}-{end}: {e}")
             else:
-                print(f"Creating position-based windows with size {window_size}")
+                print(f"Creating position-based windows with size {window_size}", flush=True)
                 try:
                     self.windowed_dataset = sg.window_by_position(
                         self.dataset,
@@ -300,11 +300,11 @@ class GenomicDataset:
         
         # Check if windowing was successful
         if self.windowed_dataset is None:
-            print("Warning: Window creation failed. No windows available.")
+            print("Warning: Window creation failed. No windows available.", flush=True)
             return
             
         n_windows = len(self.windowed_dataset.windows)
-        print(f"Created {n_windows} windows")
+        print(f"Created {n_windows} windows", flush=True)
         
         # Check for boundary issues and warn user
         self._check_window_boundaries()

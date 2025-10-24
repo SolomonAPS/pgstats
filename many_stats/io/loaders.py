@@ -115,21 +115,31 @@ def load_vcf(vcf_path: Union[str, List[str]],
     
     temp_dir = Path(temp_dir)
     
-    # Generate Zarr output path
+    # Generate Zarr output path with proper extension handling
     if len(vcf_paths) == 1:
-        zarr_path = temp_dir / f"{Path(vcf_paths[0]).stem}.vcz"
+        # Handle .vcf.gz, .vcf, .bcf.gz, .bcf properly
+        vcf_name = Path(vcf_paths[0]).name
+        # Remove .gz/.bgz first if present
+        if vcf_name.endswith('.gz') or vcf_name.endswith('.bgz'):
+            vcf_name = vcf_name.rsplit('.', 1)[0]
+        # Remove .vcf/.bcf extension
+        if vcf_name.endswith('.vcf') or vcf_name.endswith('.bcf'):
+            vcf_name = vcf_name.rsplit('.', 1)[0]
+        zarr_path = temp_dir / f"{vcf_name}.vcz"
     else:
         zarr_path = temp_dir / "combined.vcz"
     
     # Check if we can reuse existing Zarr file
     if _is_zarr_up_to_date(zarr_path, vcf_paths):
-        print(f"Reusing existing Zarr file: {zarr_path}")
-        dataset = sg.load_dataset(str(zarr_path), **kwargs)
+        print(f"Reusing existing Zarr file: {zarr_path}", flush=True)
+        print(f"Loading Zarr dataset (lazy mode)...", flush=True)
+        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        print(f"✓ Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         return dataset
     
     try:
         # Convert VCF to Zarr using bio2zarr Python API
-        print(f"Converting VCF to Zarr: {zarr_path}")
+        print(f"Converting VCF to Zarr: {zarr_path}", flush=True)
         v2z.convert(
             vcf_paths,
             str(zarr_path),
@@ -138,13 +148,17 @@ def load_vcf(vcf_path: Union[str, List[str]],
             worker_processes=worker_processes,
             show_progress=show_progress
         )
+        print(f"✓ VCF conversion complete", flush=True)
         
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
         
-        # Load Zarr dataset with sgkit
-        print(f"Loading Zarr dataset: {zarr_path}")
-        dataset = sg.load_dataset(str(zarr_path), **kwargs)
+        # Load Zarr dataset with sgkit (lazy mode with chunking)
+        print(f"Loading Zarr dataset (lazy mode)...", flush=True)
+        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        
+        # Validate dataset loaded correctly (without triggering computation)
+        print(f"✓ Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         
         return dataset
         
