@@ -7,7 +7,7 @@ setup(
     author="Your Name",
     author_email="your.email@example.com",
     packages=find_packages(),
-    python_requires=">=3.8",
+    python_requires=">=3.8,<3.13",
     install_requires=[
         "sgkit>=0.10.0",
         "numba>=0.56.0",
