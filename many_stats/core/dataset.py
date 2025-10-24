@@ -176,7 +176,7 @@ class GenomicDataset:
         print(f"Processing {len(bed_grouped)} contigs...", flush=True)
         
         # Process each contig separately (vectorized within contig)
-        for contig_idx, group in bed_grouped:
+        for contig_num, (contig_idx, group) in enumerate(bed_grouped, 1):
             # Get all variants for this contig
             contig_variant_mask = (contigs == contig_idx)
             contig_positions = positions[contig_variant_mask]
@@ -194,8 +194,11 @@ class GenomicDataset:
             
             chunk_size = 10000  # Process 10k variants at a time
             variant_indices = np.where(contig_variant_mask)[0]
+            n_chunks = (len(contig_positions) + chunk_size - 1) // chunk_size
             
-            for i in range(0, len(contig_positions), chunk_size):
+            print(f"  Contig {contig_num}/{len(bed_grouped)} ({contig_names[contig_idx]}): {len(contig_positions):,} variants, {len(group):,} BED regions, {n_chunks:,} chunks", flush=True)
+            
+            for chunk_num, i in enumerate(range(0, len(contig_positions), chunk_size), 1):
                 chunk_positions = contig_positions[i:i+chunk_size]
                 chunk_indices = variant_indices[i:i+chunk_size]
                 
@@ -211,6 +214,11 @@ class GenomicDataset:
                     callable_mask[chunk_indices] &= ~in_region
                 else:  # callable
                     callable_mask[chunk_indices] |= in_region
+                
+                # Progress indicator every 100 chunks or on last chunk
+                if chunk_num % 100 == 0 or chunk_num == n_chunks:
+                    pct = (chunk_num / n_chunks) * 100
+                    print(f"    Progress: {chunk_num}/{n_chunks} chunks ({pct:.0f}%)", flush=True)
         
         print(f"✓ BED processing complete", flush=True)
         
