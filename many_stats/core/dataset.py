@@ -289,14 +289,17 @@ class GenomicDataset:
             ends=bed_df['end'].astype(int)
         )
         
+        # Create DataFrame with variant positions and original indices
+        # This is necessary because PyRanges resets indices in overlap results
+        variants_df = pd.DataFrame({
+            'Chromosome': contig_names[contigs].astype(str),
+            'Start': positions - 1,  # Convert 1-based to 0-based
+            'End': positions,         # VCF position becomes end (exclusive)
+            'variant_idx': np.arange(len(positions))  # Track original index
+        })
+        
         # Create PyRanges object from variants
-        # Convert 1-based VCF positions to 0-based for PyRanges
-        # Each variant is a single position: [pos-1, pos)
-        variants_gr = pr.PyRanges(
-            chromosomes=contig_names[contigs].astype(str),
-            starts=positions - 1,  # Convert 1-based to 0-based
-            ends=positions          # VCF position becomes end (exclusive)
-        )
+        variants_gr = pr.PyRanges(variants_df)
         
         print(f"Finding overlaps with interval trees...", flush=True)
         
@@ -309,15 +312,15 @@ class GenomicDataset:
             # BED defines non-callable regions - start with all callable, remove overlaps
             callable_mask = np.ones(len(positions), dtype=bool)
             if len(overlapping_gr) > 0:
-                # Get indices of overlapping variants
-                overlap_indices = overlapping_gr.df.index.values
+                # Get original indices of overlapping variants
+                overlap_indices = overlapping_gr.variant_idx.values
                 callable_mask[overlap_indices] = False
         else:  # callable
             # BED defines callable regions - start with none callable, add overlaps
             callable_mask = np.zeros(len(positions), dtype=bool)
             if len(overlapping_gr) > 0:
-                # Get indices of overlapping variants
-                overlap_indices = overlapping_gr.df.index.values
+                # Get original indices of overlapping variants
+                overlap_indices = overlapping_gr.variant_idx.values
                 callable_mask[overlap_indices] = True
         
         print(f"BED processing complete ({np.sum(~callable_mask):,} variants marked non-callable)", flush=True)
