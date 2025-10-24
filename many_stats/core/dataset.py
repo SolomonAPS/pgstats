@@ -9,6 +9,7 @@ missing data and callable sites. Built on top of sgkit's windowing capabilities.
 import numpy as np
 import xarray as xr
 import pandas as pd
+import pyranges as pr
 from pathlib import Path
 from typing import Optional, Union, List, Dict, Any, Tuple
 import dask.array as da
@@ -263,88 +264,63 @@ class GenomicDataset:
     
     def _apply_callable_sites_mask(self, bed_df: pd.DataFrame) -> np.ndarray:
         """
-        Apply callable sites mask by setting non-callable sites to -1 (missing).
-        
-        OPTIMIZED VERSION: Uses vectorized operations for millions of BED regions.
+        Apply callable sites mask using PyRanges for fast interval tree operations.
         
         BED file format: 0-based start (inclusive), 0-based end (exclusive)
         VCF positions are 1-based.
         
         Args:
-            bed_df: DataFrame with BED regions
+            bed_df: DataFrame with BED regions (columns: chrom, start, end)
             
         Returns:
             Boolean array where True = callable, False = non-callable
         """
-        print(f"Processing {len(bed_df):,} BED regions...", flush=True)
+        print(f"Processing {len(bed_df):,} BED regions with PyRanges...", flush=True)
         
         positions = self.dataset.variant_position.values
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
-        # Create mask for callable sites (True = callable)
+        # Create PyRanges object from BED file
+        # BED is 0-based, half-open [start, end)
+        bed_gr = pr.PyRanges(
+            chromosomes=bed_df['chrom'].astype(str),
+            starts=bed_df['start'].astype(int),
+            ends=bed_df['end'].astype(int)
+        )
+        
+        # Create PyRanges object from variants
+        # Convert 1-based VCF positions to 0-based for PyRanges
+        # Each variant is a single position: [pos-1, pos)
+        variants_gr = pr.PyRanges(
+            chromosomes=contig_names[contigs].astype(str),
+            starts=positions - 1,  # Convert 1-based to 0-based
+            ends=positions          # VCF position becomes end (exclusive)
+        )
+        
+        print(f"Finding overlaps with interval trees...", flush=True)
+        
+        # Find overlapping variants using PyRanges' efficient overlap detection
+        # This uses NCLS (Nested Containment Lists) internally - very fast!
+        overlapping_gr = variants_gr.overlap(bed_gr)
+        
+        # Create boolean mask based on which variants overlap BED regions
         if self.callable_config.bed_format == "non_callable":
-            callable_mask = np.ones(len(positions), dtype=bool)  # Start with all sites callable
-        elif self.callable_config.bed_format == "callable":
-            callable_mask = np.zeros(len(positions), dtype=bool)  # Start with no sites callable
-        else:
-            raise ValueError(f"Unknown bed_format: {self.callable_config.bed_format}")
+            # BED defines non-callable regions - start with all callable, remove overlaps
+            callable_mask = np.ones(len(positions), dtype=bool)
+            if len(overlapping_gr) > 0:
+                # Get indices of overlapping variants
+                overlap_indices = overlapping_gr.df.index.values
+                callable_mask[overlap_indices] = False
+        else:  # callable
+            # BED defines callable regions - start with none callable, add overlaps
+            callable_mask = np.zeros(len(positions), dtype=bool)
+            if len(overlapping_gr) > 0:
+                # Get indices of overlapping variants
+                overlap_indices = overlapping_gr.df.index.values
+                callable_mask[overlap_indices] = True
         
-        # Create contig name to index mapping
-        contig_map = {str(name): idx for idx, name in enumerate(contig_names)}
-        
-        # Group BED regions by contig for efficient processing
-        bed_df['contig_idx'] = bed_df['chrom'].map(lambda x: contig_map.get(str(x), -1))
-        bed_grouped = bed_df[bed_df['contig_idx'] >= 0].groupby('contig_idx')
-        
-        print(f"Processing {len(bed_grouped)} contigs...", flush=True)
-        
-        # Process each contig separately (vectorized within contig)
-        for contig_num, (contig_idx, group) in enumerate(bed_grouped, 1):
-            # Get all variants for this contig
-            contig_variant_mask = (contigs == contig_idx)
-            contig_positions = positions[contig_variant_mask]
-            
-            if len(contig_positions) == 0:
-                continue
-            
-            # Convert BED regions to arrays for vectorized operations
-            bed_starts = group['start'].values + 1  # Convert 0-based to 1-based VCF
-            bed_ends = group['end'].values  # BED end is exclusive, VCF is inclusive
-            
-            # For each variant position, check if it falls in ANY BED region
-            # Using broadcasting: positions[:, None] vs regions[None, :]
-            # This creates a 2D boolean matrix but processes in chunks to avoid memory issues
-            
-            chunk_size = 10000  # Process 10k variants at a time
-            variant_indices = np.where(contig_variant_mask)[0]
-            n_chunks = (len(contig_positions) + chunk_size - 1) // chunk_size
-            
-            print(f"  Contig {contig_num}/{len(bed_grouped)} ({contig_names[contig_idx]}): {len(contig_positions):,} variants, {len(group):,} BED regions, {n_chunks:,} chunks", flush=True)
-            
-            for chunk_num, i in enumerate(range(0, len(contig_positions), chunk_size), 1):
-                chunk_positions = contig_positions[i:i+chunk_size]
-                chunk_indices = variant_indices[i:i+chunk_size]
-                
-                # Vectorized check: does position fall in any [start, end] range?
-                # Use broadcasting: (chunk_positions[:, None] >= bed_starts) creates matrix
-                in_region = (
-                    (chunk_positions[:, None] >= bed_starts) & 
-                    (chunk_positions[:, None] <= bed_ends)
-                ).any(axis=1)  # True if position is in ANY region
-                
-                # Update callable mask for these variants
-                if self.callable_config.bed_format == "non_callable":
-                    callable_mask[chunk_indices] &= ~in_region
-                else:  # callable
-                    callable_mask[chunk_indices] |= in_region
-                
-                # Progress indicator every 100 chunks or on last chunk
-                if chunk_num % 100 == 0 or chunk_num == n_chunks:
-                    pct = (chunk_num / n_chunks) * 100
-                    print(f"    Progress: {chunk_num}/{n_chunks} chunks ({pct:.0f}%)", flush=True)
-        
-        print(f"BED processing complete", flush=True)
+        print(f"BED processing complete ({np.sum(~callable_mask):,} variants marked non-callable)", flush=True)
         
         # Set non-callable sites to -1 (missing) in genotype data
         # Use xarray.where() to stay lazy with dask arrays

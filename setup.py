@@ -18,6 +18,7 @@ setup(
         "scipy>=1.7.0",
         "pandas>=1.3.0",
         "bio2zarr>=0.1.6",
+        "pyranges>=0.0.129",
     ],
     entry_points={
         'console_scripts': [
