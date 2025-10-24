@@ -335,13 +335,29 @@ class GenomicDataset:
         print(f"Variants PyRanges sample (first 3 variants):", flush=True)
         print(f"  {variants_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
         
-        # Check chromosome overlap
+        # Test a manual overlap check for debugging
+        bed_first = bed_gr.head(1).df.iloc[0]
+        var_first = variants_gr.head(1).df.iloc[0]
+        print(f"\nManual overlap test:", flush=True)
+        print(f"  First BED: [{bed_first['Start']}, {bed_first['End']}) on {bed_first['Chromosome']}", flush=True)
+        print(f"  First variant: [{var_first['Start']}, {var_first['End']}) on {var_first['Chromosome']}", flush=True)
+        overlaps = (bed_first['Start'] < var_first['End']) and (var_first['Start'] < bed_first['End']) and (bed_first['Chromosome'] == var_first['Chromosome'])
+        print(f"  Should overlap? {overlaps}", flush=True)
+        
+        # Check chromosome overlap and data types
         bed_chrom_set = set(bed_gr.chromosomes)
         var_chrom_set = set(variants_gr.chromosomes)
         common_chroms = bed_chrom_set.intersection(var_chrom_set)
         print(f"Chromosomes in common: {sorted(common_chroms)[:5]}", flush=True)
         print(f"BED-only chromosomes: {sorted(bed_chrom_set - var_chrom_set)[:5]}", flush=True)
         print(f"VCF-only chromosomes: {sorted(var_chrom_set - bed_chrom_set)[:5]}", flush=True)
+        
+        # Check data types
+        print(f"\nData types:", flush=True)
+        print(f"  BED Chromosome dtype: {bed_gr.df['Chromosome'].dtype}", flush=True)
+        print(f"  BED Start dtype: {bed_gr.df['Start'].dtype}", flush=True)
+        print(f"  Variant Chromosome dtype: {variants_gr.df['Chromosome'].dtype}", flush=True)
+        print(f"  Variant Start dtype: {variants_gr.df['Start'].dtype}", flush=True)
         
         print(f"Finding overlaps with interval trees...", flush=True)
         

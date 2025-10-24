@@ -28,4 +28,5 @@ many-stats stats \
     --keep-zarr \
     --zarr-dir /proj/johrilab/projects/DFEpos/dpgp3/stats
 
-echo "Analysis completed successfully!"
+# Note: Success message removed - check exit code instead
+# If the job completes without error, the analysis succeeded
