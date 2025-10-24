@@ -490,7 +490,7 @@ def run_stats_command(args):
             logger.info(f"Saving results to {args.output}")
             print(f"\nSaving results to {args.output}...")
             results_df.to_csv(args.output, index=False)
-            print(f"✓ Results saved successfully")
+            print(f"Results saved successfully")
             
         elif args.window_size or args.region:
             # Single region or genome-wide windowed analysis
@@ -517,7 +517,7 @@ def run_stats_command(args):
             logger.info(f"Saving results to {args.output}")
             print(f"\nSaving results to {args.output}...")
             genomic_ds.save_results(args.output, format=args.format)
-            print(f"✓ Results saved successfully")
+            print(f"Results saved successfully")
         else:
             # Genome-wide analysis
             print(f"\nStarting genome-wide statistics calculation...")
@@ -537,14 +537,14 @@ def run_stats_command(args):
                 df.to_csv(args.output, sep='\t', index=False, header=not args.no_header)
             elif args.format == 'parquet':
                 df.to_parquet(args.output, index=False)
-            print(f"✓ Results saved successfully")
+            print(f"Results saved successfully")
     except Exception as e:
         logger.error(f"Failed to calculate/save statistics: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
     
-    print(f"\n✓ Analysis complete!")
+    print(f"\nAnalysis complete!")
 
 
 def run_info_command(args):

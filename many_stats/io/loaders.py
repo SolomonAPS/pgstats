@@ -134,7 +134,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
         print(f"Reusing existing Zarr file: {zarr_path}", flush=True)
         print(f"Loading Zarr dataset (lazy mode)...", flush=True)
         dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
-        print(f"✓ Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
+        print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         return dataset
     
     try:
@@ -148,7 +148,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
             worker_processes=worker_processes,
             show_progress=show_progress
         )
-        print(f"✓ VCF conversion complete", flush=True)
+        print(f"VCF conversion complete", flush=True)
         
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
@@ -158,7 +158,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
         dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
         
         # Validate dataset loaded correctly (without triggering computation)
-        print(f"✓ Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
+        print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         
         return dataset
         

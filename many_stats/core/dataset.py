@@ -169,15 +169,15 @@ class GenomicDataset:
             
             # Validate mask dimensions match current dataset
             if len(cached_mask) != len(self.dataset.variants):
-                print(f"  ⚠️  Cached mask size mismatch (cache: {len(cached_mask)}, dataset: {len(self.dataset.variants)})", flush=True)
+                print(f"  WARNING: Cached mask size mismatch (cache: {len(cached_mask)}, dataset: {len(self.dataset.variants)})", flush=True)
                 print(f"  Ignoring cache and recomputing mask...", flush=True)
                 return None
             
-            print(f"  ✓ Using cached mask ({len(cached_mask):,} variants)", flush=True)
+            print(f"  Using cached mask ({len(cached_mask):,} variants)", flush=True)
             return cached_mask
             
         except Exception as e:
-            print(f"  ⚠️  Error loading cached mask: {e}", flush=True)
+            print(f"  WARNING: Error loading cached mask: {e}", flush=True)
             print(f"  Recomputing mask...", flush=True)
             return None
     
@@ -186,9 +186,9 @@ class GenomicDataset:
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             np.save(cache_path, mask)
-            print(f"  ✓ Cached mask saved: {cache_path.name}", flush=True)
+            print(f"  Cached mask saved: {cache_path.name}", flush=True)
         except Exception as e:
-            print(f"  ⚠️  Warning: Could not save mask cache: {e}", flush=True)
+            print(f"  WARNING: Could not save mask cache: {e}", flush=True)
     
     def _load_callable_sites(self):
         """Load callable sites from BED file and mask non-callable sites."""
@@ -259,7 +259,7 @@ class GenomicDataset:
         self.non_callable_mask = non_callable_mask
         self.callable_sites = np.sum(callable_mask)
         
-        print(f"  ✓ Masked {np.sum(non_callable_mask):,} non-callable sites as missing data", flush=True)
+        print(f"  Masked {np.sum(non_callable_mask):,} non-callable sites as missing data", flush=True)
     
     def _apply_callable_sites_mask(self, bed_df: pd.DataFrame) -> np.ndarray:
         """
@@ -344,7 +344,7 @@ class GenomicDataset:
                     pct = (chunk_num / n_chunks) * 100
                     print(f"    Progress: {chunk_num}/{n_chunks} chunks ({pct:.0f}%)", flush=True)
         
-        print(f"✓ BED processing complete", flush=True)
+        print(f"BED processing complete", flush=True)
         
         # Set non-callable sites to -1 (missing) in genotype data
         # Use xarray.where() to stay lazy with dask arrays
@@ -547,7 +547,7 @@ class GenomicDataset:
         
         # Print warnings
         if boundary_warnings:
-            print(f"\n⚠️  WARNING: {len(boundary_warnings)} windows extend beyond contig boundaries:")
+            print(f"\nWARNING: {len(boundary_warnings)} windows extend beyond contig boundaries:")
             for warning in boundary_warnings[:5]:  # Show first 5
                 print(f"  Window {warning['window']} on {warning['contig']}: "
                       f"requested {warning['start_pos']}-{warning['requested_end']} "
@@ -557,7 +557,7 @@ class GenomicDataset:
             print("  These windows will only include variants within the contig boundaries.")
         
         if small_window_warnings:
-            print(f"\n⚠️  WARNING: {len(small_window_warnings)} windows have fewer variants than expected:")
+            print(f"\nWARNING: {len(small_window_warnings)} windows have fewer variants than expected:")
             for warning in small_window_warnings[:5]:  # Show first 5
                 print(f"  Window {warning['window']} on {warning['contig']}: "
                       f"{warning['n_variants']} variants, {warning['actual_size']}bp "
@@ -1089,10 +1089,10 @@ class GenomicDataset:
                 
                 all_results.append(region_df)
                 
-                print(f"  ✓ Analyzed {len(region_df)} windows")
+                print(f"  Analyzed {len(region_df)} windows")
                 
             except Exception as e:
-                print(f"  ✗ Error analyzing region {contig}:{region_start}-{region_end}: {e}")
+                print(f"  ERROR: analyzing region {contig}:{region_start}-{region_end}: {e}")
                 continue
         
         if not all_results:
