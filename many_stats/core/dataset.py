@@ -77,6 +77,10 @@ class GenomicDataset:
         """
         self.callable_config = callable_config or CallableSitesConfig()
         self.window_config = window_config or WindowConfig()
+        self.keep_zarr = keep_zarr
+        self.zarr_dir = zarr_dir
+        self.output_dir = output_dir
+        self.data_source_path = data_source if isinstance(data_source, str) else None
         
         # Load data
         if isinstance(data_source, str):
@@ -118,6 +122,74 @@ class GenomicDataset:
         if 'call_genotype_mask' not in self.dataset.data_vars:
             print("Warning: No genotype mask found. Missing data will be inferred from genotype values.")
     
+    def _get_bed_cache_path(self, bed_path: Path) -> Optional[Path]:
+        """
+        Get the path where the BED mask cache should be stored.
+        
+        Returns None if caching is not enabled.
+        """
+        if not self.keep_zarr:
+            return None
+        
+        # Determine cache directory
+        if self.zarr_dir:
+            cache_dir = Path(self.zarr_dir)
+        elif self.output_dir:
+            cache_dir = Path(self.output_dir)
+        elif self.data_source_path:
+            cache_dir = Path(self.data_source_path).parent
+        else:
+            return None
+        
+        # Generate hash of BED file content + format
+        import hashlib
+        hasher = hashlib.md5()
+        
+        # Include BED file content
+        with open(bed_path, 'rb') as f:
+            hasher.update(f.read())
+        
+        # Include BED format (callable vs non_callable matters!)
+        hasher.update(self.callable_config.bed_format.encode())
+        
+        bed_hash = hasher.hexdigest()[:12]  # Use first 12 chars
+        
+        # Cache filename includes BED filename and hash
+        cache_filename = f".bed_mask_{bed_path.stem}_{bed_hash}.npy"
+        return cache_dir / cache_filename
+    
+    def _load_cached_mask(self, cache_path: Path) -> Optional[np.ndarray]:
+        """Load cached BED mask if it exists and is valid."""
+        if not cache_path.exists():
+            return None
+        
+        try:
+            print(f"Found cached BED mask: {cache_path.name}", flush=True)
+            cached_mask = np.load(cache_path)
+            
+            # Validate mask dimensions match current dataset
+            if len(cached_mask) != len(self.dataset.variants):
+                print(f"  ⚠️  Cached mask size mismatch (cache: {len(cached_mask)}, dataset: {len(self.dataset.variants)})", flush=True)
+                print(f"  Ignoring cache and recomputing mask...", flush=True)
+                return None
+            
+            print(f"  ✓ Using cached mask ({len(cached_mask):,} variants)", flush=True)
+            return cached_mask
+            
+        except Exception as e:
+            print(f"  ⚠️  Error loading cached mask: {e}", flush=True)
+            print(f"  Recomputing mask...", flush=True)
+            return None
+    
+    def _save_cached_mask(self, cache_path: Path, mask: np.ndarray):
+        """Save computed BED mask to cache."""
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(cache_path, mask)
+            print(f"  ✓ Cached mask saved: {cache_path.name}", flush=True)
+        except Exception as e:
+            print(f"  ⚠️  Warning: Could not save mask cache: {e}", flush=True)
+    
     def _load_callable_sites(self):
         """Load callable sites from BED file and mask non-callable sites."""
         if not self.callable_config.bed_file:
@@ -126,6 +198,16 @@ class GenomicDataset:
         bed_path = Path(self.callable_config.bed_file)
         if not bed_path.exists():
             raise FileNotFoundError(f"BED file not found: {bed_path}")
+        
+        # Try to load cached mask first
+        cache_path = self._get_bed_cache_path(bed_path)
+        if cache_path:
+            cached_mask = self._load_cached_mask(cache_path)
+            if cached_mask is not None:
+                # Use cached mask directly
+                self._apply_cached_mask(cached_mask)
+                print(f"Applied callable sites mask: {self.callable_sites:,} callable sites (from cache)", flush=True)
+                return
         
         # Load BED file
         bed_df = pd.read_csv(
@@ -136,11 +218,50 @@ class GenomicDataset:
         )
         
         # Create non-callable sites mask and apply it
-        self._apply_callable_sites_mask(bed_df)
+        callable_mask = self._apply_callable_sites_mask(bed_df)
+        
+        # Save mask to cache if enabled
+        if cache_path:
+            self._save_cached_mask(cache_path, callable_mask)
         
         print(f"Applied callable sites mask: {self.callable_sites:,} callable sites", flush=True)
     
-    def _apply_callable_sites_mask(self, bed_df: pd.DataFrame):
+    def _apply_cached_mask(self, callable_mask: np.ndarray):
+        """
+        Apply a pre-computed callable sites mask.
+        
+        Args:
+            callable_mask: Boolean array where True = callable, False = non-callable
+        """
+        print(f"Applying cached mask to genotypes...", flush=True)
+        
+        # Use the cached mask directly
+        non_callable_mask = ~callable_mask
+        
+        # Expand mask and apply to genotypes (lazy operation)
+        mask_expanded = xr.DataArray(
+            non_callable_mask[:, np.newaxis, np.newaxis],
+            dims=['variants', 'samples', 'ploidy'],
+            coords={
+                'variants': self.dataset.variants,
+                'samples': self.dataset.samples,
+                'ploidy': self.dataset.ploidy
+            }
+        )
+        
+        genotypes_masked = xr.where(mask_expanded, -1, self.dataset.call_genotype)
+        self.dataset = self.dataset.assign(call_genotype=genotypes_masked)
+        
+        updated_mask = (genotypes_masked == -1)
+        self.dataset = self.dataset.assign(call_genotype_mask=updated_mask)
+        
+        # Store information
+        self.non_callable_mask = non_callable_mask
+        self.callable_sites = np.sum(callable_mask)
+        
+        print(f"  ✓ Masked {np.sum(non_callable_mask):,} non-callable sites as missing data", flush=True)
+    
+    def _apply_callable_sites_mask(self, bed_df: pd.DataFrame) -> np.ndarray:
         """
         Apply callable sites mask by setting non-callable sites to -1 (missing).
         
@@ -151,6 +272,9 @@ class GenomicDataset:
         
         Args:
             bed_df: DataFrame with BED regions
+            
+        Returns:
+            Boolean array where True = callable, False = non-callable
         """
         print(f"Processing {len(bed_df):,} BED regions...", flush=True)
         
@@ -254,6 +378,9 @@ class GenomicDataset:
         self.callable_sites = np.sum(callable_mask)
         
         print(f"Masked {np.sum(non_callable_mask):,} non-callable sites as missing data", flush=True)
+        
+        # Return the callable mask for caching
+        return callable_mask
     
     def filter_missing_data(self, max_missing: Optional[float] = None):
         """
