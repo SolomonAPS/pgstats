@@ -281,6 +281,31 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
+        # Debug: Show chromosome names
+        vcf_chroms = set(contig_names.astype(str))
+        bed_chroms = set(bed_df['chrom'].astype(str).unique())
+        print(f"VCF chromosomes (first 5): {sorted(vcf_chroms)[:5]}", flush=True)
+        print(f"BED chromosomes (first 5): {sorted(bed_chroms)[:5]}", flush=True)
+        
+        # Normalize chromosome names if needed
+        # Check if BED has "chr" prefix but VCF doesn't (or vice versa)
+        bed_df = bed_df.copy()
+        
+        # Sample chromosomes to detect naming convention
+        sample_vcf_chr = str(next(iter(vcf_chroms)))
+        sample_bed_chr = str(next(iter(bed_chroms)))
+        
+        if sample_bed_chr.startswith('chr') and not sample_vcf_chr.startswith('chr'):
+            # BED has "chr" prefix, VCF doesn't - strip from BED
+            print(f"Normalizing: Stripping 'chr' prefix from BED chromosomes", flush=True)
+            bed_df['chrom'] = bed_df['chrom'].str.replace('^chr', '', regex=True)
+        elif not sample_bed_chr.startswith('chr') and sample_vcf_chr.startswith('chr'):
+            # VCF has "chr" prefix, BED doesn't - add to BED
+            print(f"Normalizing: Adding 'chr' prefix to BED chromosomes", flush=True)
+            bed_df['chrom'] = 'chr' + bed_df['chrom'].astype(str)
+        else:
+            print(f"Chromosome names match convention", flush=True)
+        
         # Create PyRanges object from BED file
         # BED is 0-based, half-open [start, end)
         bed_gr = pr.PyRanges(
@@ -307,6 +332,8 @@ class GenomicDataset:
         # This uses NCLS (Nested Containment Lists) internally - very fast!
         overlapping_gr = variants_gr.overlap(bed_gr)
         
+        print(f"Found {len(overlapping_gr):,} overlapping variant-region pairs", flush=True)
+        
         # Create boolean mask based on which variants overlap BED regions
         if self.callable_config.bed_format == "non_callable":
             # BED defines non-callable regions - start with all callable, remove overlaps
@@ -315,6 +342,9 @@ class GenomicDataset:
                 # Get original indices of overlapping variants
                 overlap_indices = overlapping_gr.variant_idx.values
                 callable_mask[overlap_indices] = False
+            else:
+                print("WARNING: No overlaps found between variants and BED regions!", flush=True)
+                print("         Check that chromosome names match between VCF and BED file.", flush=True)
         else:  # callable
             # BED defines callable regions - start with none callable, add overlaps
             callable_mask = np.zeros(len(positions), dtype=bool)
@@ -322,8 +352,13 @@ class GenomicDataset:
                 # Get original indices of overlapping variants
                 overlap_indices = overlapping_gr.variant_idx.values
                 callable_mask[overlap_indices] = True
+            else:
+                print("WARNING: No overlaps found between variants and BED regions!", flush=True)
+                print("         Check that chromosome names match between VCF and BED file.", flush=True)
         
-        print(f"BED processing complete ({np.sum(~callable_mask):,} variants marked non-callable)", flush=True)
+        n_non_callable = np.sum(~callable_mask)
+        n_callable = np.sum(callable_mask)
+        print(f"BED processing complete: {n_callable:,} callable, {n_non_callable:,} non-callable variants", flush=True)
         
         # Set non-callable sites to -1 (missing) in genotype data
         # Use xarray.where() to stay lazy with dask arrays
