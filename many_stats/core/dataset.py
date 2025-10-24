@@ -205,6 +205,15 @@ class GenomicDataset:
         if cache_path:
             cached_mask = self._load_cached_mask(cache_path)
             if cached_mask is not None:
+                # Load BED file for PyRanges (needed for L calculation even with cached mask)
+                bed_df = pd.read_csv(
+                    bed_path, 
+                    sep='\t', 
+                    names=['chrom', 'start', 'end'],
+                    usecols=[0, 1, 2]
+                )
+                self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
+                
                 # Use cached mask directly
                 self._apply_cached_mask(cached_mask)
                 print(f"Applied callable sites mask: {self.callable_sites:,} callable sites (from cache)", flush=True)
@@ -217,6 +226,9 @@ class GenomicDataset:
             names=['chrom', 'start', 'end'],
             usecols=[0, 1, 2]
         )
+        
+        # Store BED data as PyRanges object for efficient L calculation
+        self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
         
         # Create non-callable sites mask and apply it
         callable_mask = self._apply_callable_sites_mask(bed_df)
@@ -825,20 +837,28 @@ class GenomicDataset:
             window_start_idx = window_stats.window_start.values[window_idx]
             window_stop_idx = window_stats.window_stop.values[window_idx]
             
-            # Convert variant indices to genomic positions
+            # Convert variant indices to genomic positions and determine contig
             positions = self.dataset.variant_position.values
+            contigs = self.dataset.variant_contig.values
+            contig_names = self.dataset.contig_id.values
+            
             if window_start_idx < len(positions) and window_stop_idx > 0:
                 window_start_pos = positions[window_start_idx]
                 window_stop_pos = positions[window_stop_idx-1] if window_stop_idx-1 < len(positions) else positions[-1]
                 window_length = window_stop_pos - window_start_pos + 1
+                
+                # Determine contig for this window (use the contig of the first variant)
+                contig_idx = contigs[window_start_idx]
+                contig_name = contig_names[contig_idx]
             else:
                 # Empty window
                 window_start_pos = 0
                 window_stop_pos = 0
                 window_length = 0
+                contig_name = None
             
-            # Calculate callable length in this window using genomic positions
-            callable_length = self._calculate_callable_length_in_window(window_start_pos, window_stop_pos)
+            # Calculate callable length in this window using genomic positions and contig
+            callable_length = self._calculate_callable_length_in_window(window_start_pos, window_stop_pos, contig_name)
             callable_sites_per_window.append(callable_length)
         
         callable_sites_per_window = np.array(callable_sites_per_window)
@@ -855,13 +875,14 @@ class GenomicDataset:
         
         return result
     
-    def _calculate_callable_length_in_window(self, window_start: int, window_stop: int) -> int:
+    def _calculate_callable_length_in_window(self, window_start: int, window_stop: int, contig_name: str = None) -> int:
         """
-        Calculate the number of callable sites in a window based on BED overlap.
+        Calculate the number of callable sites in a window based on BED overlap using PyRanges.
         
         Args:
             window_start: Start position of the window
             window_stop: End position of the window
+            contig_name: Name of the contig (chromosome) for this window
             
         Returns:
             Number of callable sites in the window
@@ -875,6 +896,70 @@ class GenomicDataset:
         if self.callable_config.bed_file is None:
             return window_length
         
+        # Check if PyRanges BED data is available
+        if not hasattr(self, 'bed_gr') or self.bed_gr is None:
+            # Fallback to original method if PyRanges data not available
+            return self._calculate_callable_length_in_window_fallback(window_start, window_stop, contig_name)
+        
+        if contig_name is None:
+            # If no contig specified, assume entire window is callable
+            return window_length
+        
+        if self.callable_config.bed_format == "non_callable":
+            # BED defines non-callable regions
+            # Calculate masked length by finding intersections with BED regions on this contig
+            masked_length = 0
+            
+            # Get BED regions on this contig
+            bed_df = self.bed_gr.df
+            overlapping_bed = bed_df[bed_df['Chromosome'] == contig_name]
+            
+            for _, bed_row in overlapping_bed.iterrows():
+                bed_start = bed_row['Start']
+                bed_end = bed_row['End']
+                
+                # Calculate intersection
+                intersection_start = max(window_start, bed_start)
+                intersection_end = min(window_stop, bed_end)
+                
+                if intersection_start < intersection_end:
+                    masked_length += intersection_end - intersection_start
+            
+            callable_length = window_length - masked_length
+            
+        elif self.callable_config.bed_format == "callable":
+            # BED defines callable regions
+            # Calculate callable length by finding intersections with BED regions on this contig
+            callable_length = 0
+            
+            # Get BED regions on this contig
+            bed_df = self.bed_gr.df
+            overlapping_bed = bed_df[bed_df['Chromosome'] == contig_name]
+            
+            for _, bed_row in overlapping_bed.iterrows():
+                bed_start = bed_row['Start']
+                bed_end = bed_row['End']
+                
+                # Calculate intersection
+                intersection_start = max(window_start, bed_start)
+                intersection_end = min(window_stop, bed_end)
+                
+                if intersection_start < intersection_end:
+                    callable_length += intersection_end - intersection_start
+            
+        else:
+            raise ValueError(f"Unknown bed_format: {self.callable_config.bed_format}")
+        
+        # Ensure at least 1 callable site to avoid division by zero
+        return max(1, callable_length)
+    
+    def _calculate_callable_length_in_window_fallback(self, window_start: int, window_stop: int, contig_name: str = None) -> int:
+        """
+        Fallback method for calculating callable length when PyRanges is not available.
+        This is the original implementation for backward compatibility.
+        """
+        window_length = window_stop - window_start
+        
         # Load BED file
         bed_df = pd.read_csv(
             self.callable_config.bed_file,
@@ -884,12 +969,8 @@ class GenomicDataset:
             usecols=[0, 1, 2]
         )
         
-        # Get contig names
-        contig_names = self.dataset.contig_id.values
-        
         if self.callable_config.bed_format == "non_callable":
-            # BED defines non-callable regions (current behavior)
-            # Calculate masked length in this window
+            # BED defines non-callable regions
             masked_length = 0
             
             for _, row in bed_df.iterrows():
@@ -897,14 +978,8 @@ class GenomicDataset:
                 bed_start = row['start']
                 bed_end = row['end']
                 
-                # Find matching contig
-                contig_idx = None
-                for i, contig_name in enumerate(contig_names):
-                    if str(contig_name) == str(chrom):
-                        contig_idx = i
-                        break
-                
-                if contig_idx is not None:
+                # Only process BED regions on the same contig
+                if contig_name is not None and str(chrom) == str(contig_name):
                     # Calculate overlap between BED region and window
                     overlap_start = max(window_start, bed_start)
                     overlap_end = min(window_stop, bed_end)
@@ -912,12 +987,10 @@ class GenomicDataset:
                     if overlap_start < overlap_end:
                         masked_length += overlap_end - overlap_start
             
-            # Calculate callable length
             callable_length = window_length - masked_length
             
         elif self.callable_config.bed_format == "callable":
-            # BED defines callable regions (new behavior)
-            # Calculate callable length in this window
+            # BED defines callable regions
             callable_length = 0
             
             for _, row in bed_df.iterrows():
@@ -925,14 +998,8 @@ class GenomicDataset:
                 bed_start = row['start']
                 bed_end = row['end']
                 
-                # Find matching contig
-                contig_idx = None
-                for i, contig_name in enumerate(contig_names):
-                    if str(contig_name) == str(chrom):
-                        contig_idx = i
-                        break
-                
-                if contig_idx is not None:
+                # Only process BED regions on the same contig
+                if contig_name is not None and str(chrom) == str(contig_name):
                     # Calculate overlap between BED region and window
                     overlap_start = max(window_start, bed_start)
                     overlap_end = min(window_stop, bed_end)
