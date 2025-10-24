@@ -196,19 +196,31 @@ class GenomicDataset:
                     callable_mask |= region_mask   # Mark these regions as callable
         
         # Set non-callable sites to -1 (missing) in genotype data
-        genotypes = self.dataset.call_genotype.values.copy()
+        # Use xarray.where() to stay lazy with dask arrays
         non_callable_mask = ~callable_mask
         
-        # Set all genotypes at non-callable sites to -1
-        genotypes[non_callable_mask, :, :] = -1
+        # Expand mask to match genotype dimensions (variants, samples, ploidy)
+        # non_callable_mask is shape (variants,), need to broadcast to (variants, samples, ploidy)
+        mask_expanded = xr.DataArray(
+            non_callable_mask[:, np.newaxis, np.newaxis],
+            dims=['variants', 'samples', 'ploidy'],
+            coords={
+                'variants': self.dataset.variants,
+                'samples': self.dataset.samples,
+                'ploidy': self.dataset.ploidy
+            }
+        )
+        
+        # Set all genotypes at non-callable sites to -1 (stays lazy with dask)
+        genotypes_masked = xr.where(mask_expanded, -1, self.dataset.call_genotype)
         
         # Update the dataset
-        self.dataset = self.dataset.assign(call_genotype=(['variants', 'samples', 'ploidy'], genotypes))
+        self.dataset = self.dataset.assign(call_genotype=genotypes_masked)
         
         # Update the call_genotype_mask to reflect the new missing data
-        # Create mask where True = missing, False = callable
-        updated_mask = (genotypes == -1)
-        self.dataset = self.dataset.assign(call_genotype_mask=(['variants', 'samples', 'ploidy'], updated_mask))
+        # Create mask where True = missing, False = callable (stays lazy)
+        updated_mask = (genotypes_masked == -1)
+        self.dataset = self.dataset.assign(call_genotype_mask=updated_mask)
         
         # Store information
         self.non_callable_mask = non_callable_mask
