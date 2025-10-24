@@ -151,7 +151,7 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         '-s', '--stats',
         type=str,
         nargs='+',
-        default='all',
+        default=['all'],
         choices=[
             # Neutrality tests
             'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded', 'zeng_e', 'fay_wu_h',
