@@ -308,18 +308,21 @@ class GenomicDataset:
         
         # Create PyRanges object from BED file
         # BED is 0-based, half-open [start, end)
+        # But we need to convert to 1-based VCF coordinates for overlap checking
+        # BED [0, 4829) should match VCF positions 1-4829, so we add 1 to start
         bed_gr = pr.PyRanges(
             chromosomes=bed_df['chrom'].astype(str),
-            starts=bed_df['start'].astype(int),
-            ends=bed_df['end'].astype(int)
+            starts=bed_df['start'].astype(int) + 1,  # Convert to 1-based
+            ends=bed_df['end'].astype(int) + 1       # Make end inclusive in 1-based
         )
         
         # Create DataFrame with variant positions and original indices
         # This is necessary because PyRanges resets indices in overlap results
+        # Keep positions as 1-based since we converted BED to 1-based above
         variants_df = pd.DataFrame({
             'Chromosome': contig_names[contigs].astype(str),
-            'Start': positions - 1,  # Convert 1-based to 0-based
-            'End': positions,         # VCF position becomes end (exclusive)
+            'Start': positions,       # Keep 1-based VCF position  
+            'End': positions + 1,     # Make it a half-open interval [pos, pos+1)
             'variant_idx': np.arange(len(positions))  # Track original index
         })
         
