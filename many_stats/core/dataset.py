@@ -326,6 +326,20 @@ class GenomicDataset:
         # Create PyRanges object from variants
         variants_gr = pr.PyRanges(variants_df)
         
+        # Debug: Show sample data from both PyRanges
+        print(f"BED PyRanges sample (first 3 regions):", flush=True)
+        print(f"  {bed_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
+        print(f"Variants PyRanges sample (first 3 variants):", flush=True)
+        print(f"  {variants_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
+        
+        # Check chromosome overlap
+        bed_chrom_set = set(bed_gr.chromosomes)
+        var_chrom_set = set(variants_gr.chromosomes)
+        common_chroms = bed_chrom_set.intersection(var_chrom_set)
+        print(f"Chromosomes in common: {sorted(common_chroms)[:5]}", flush=True)
+        print(f"BED-only chromosomes: {sorted(bed_chrom_set - var_chrom_set)[:5]}", flush=True)
+        print(f"VCF-only chromosomes: {sorted(var_chrom_set - bed_chrom_set)[:5]}", flush=True)
+        
         print(f"Finding overlaps with interval trees...", flush=True)
         
         # Find overlapping variants using PyRanges' efficient overlap detection
