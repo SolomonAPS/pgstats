@@ -132,8 +132,13 @@ def load_vcf(vcf_path: Union[str, List[str]],
     # Check if we can reuse existing Zarr file
     if _is_zarr_up_to_date(zarr_path, vcf_paths):
         print(f"Reusing existing Zarr file: {zarr_path}", flush=True)
-        print(f"Loading Zarr dataset (lazy mode)...", flush=True)
-        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        print(f"Loading Zarr dataset...", flush=True)
+        try:
+            # Try without dask chunking first (more reliable for dimension mismatches)
+            dataset = sg.load_dataset(str(zarr_path), chunks=None, **kwargs)
+        except Exception as e:
+            print(f"Failed to load without chunking, trying with auto-chunking: {e}", flush=True)
+            dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         return dataset
     
@@ -153,9 +158,14 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
         
-        # Load Zarr dataset with sgkit (lazy mode with chunking)
-        print(f"Loading Zarr dataset (lazy mode)...", flush=True)
-        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        # Load Zarr dataset with sgkit (try without dask chunking first for reliability)
+        print(f"Loading Zarr dataset...", flush=True)
+        try:
+            # Try without dask chunking first (more reliable for dimension mismatches)
+            dataset = sg.load_dataset(str(zarr_path), chunks=None, **kwargs)
+        except Exception as e:
+            print(f"Failed to load without chunking, trying with auto-chunking: {e}", flush=True)
+            dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
         
         # Validate dataset loaded correctly (without triggering computation)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
