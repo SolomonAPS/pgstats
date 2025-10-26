@@ -264,14 +264,10 @@ class GenomicDataset:
         print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
         print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
         
+        # Create mask with proper broadcasting - don't specify coords to avoid dimension mismatch
         mask_expanded = xr.DataArray(
             non_callable_mask[:, np.newaxis, np.newaxis],
-            dims=['variants', 'samples', 'ploidy'],
-            coords={
-                'variants': self.dataset.variants,
-                'samples': self.dataset.samples,
-                'ploidy': self.dataset.ploidy
-            }
+            dims=['variants', 'samples', 'ploidy']
         )
         
         genotypes_masked = xr.where(mask_expanded, -1, self.dataset.call_genotype)
@@ -428,14 +424,10 @@ class GenomicDataset:
         print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
         print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
         
+        # Create mask with proper broadcasting - don't specify coords to avoid dimension mismatch
         mask_expanded = xr.DataArray(
             non_callable_mask[:, np.newaxis, np.newaxis],
-            dims=['variants', 'samples', 'ploidy'],
-            coords={
-                'variants': self.dataset.variants,
-                'samples': self.dataset.samples,
-                'ploidy': self.dataset.ploidy
-            }
+            dims=['variants', 'samples', 'ploidy']
         )
         
         # Set all genotypes at non-callable sites to -1 (stays lazy with dask)
