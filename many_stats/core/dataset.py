@@ -110,6 +110,7 @@ class GenomicDataset:
         # Process callable sites if configured
         if self.callable_config.bed_file:
             self._load_callable_sites()
+            print(f"Debug: After _load_callable_sites, dataset.sizes: {self.dataset.sizes}", flush=True)
     
     def _validate_dataset(self):
         """Validate that the dataset has required fields."""

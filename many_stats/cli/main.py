@@ -427,11 +427,14 @@ def run_stats_command(args):
             zarr_dir=args.zarr_dir,
             output_dir=output_dir
         )
+        print(f"Debug: GenomicDataset created successfully", flush=True)
+        print(f"Debug: genomic_ds.dataset.sizes: {genomic_ds.dataset.sizes}", flush=True)
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
         sys.exit(1)
     
     # Print dataset summary
+    print(f"Debug: About to call get_summary()", flush=True)
     summary = genomic_ds.get_summary()
     print(f"\nDataset Summary:", flush=True)
     print(f"  Variants: {summary['n_variants']:,}", flush=True)
