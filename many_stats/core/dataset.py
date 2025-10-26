@@ -838,6 +838,10 @@ class GenomicDataset:
         Returns:
             Dataset with normalized theta estimators
         """
+        print(f"Debug: Starting theta normalization...", flush=True)
+        print(f"Debug: window_stats shape: {window_stats.sizes}", flush=True)
+        print(f"Debug: dataset shape: {self.dataset.sizes}", flush=True)
+        
         result = window_stats.copy()
         
         # Calculate callable sites per window based on BED overlap
