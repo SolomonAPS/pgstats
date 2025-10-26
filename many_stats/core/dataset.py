@@ -264,10 +264,17 @@ class GenomicDataset:
         print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
         print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
         
-        # Create mask with proper broadcasting - don't specify coords to avoid dimension mismatch
-        mask_expanded = xr.DataArray(
+        # Create broadcasted mask using dask to stay lazy
+        mask_3d = da.broadcast_to(
             non_callable_mask[:, np.newaxis, np.newaxis],
-            dims=['variants', 'samples', 'ploidy']
+            self.dataset.call_genotype.shape
+        )
+        
+        # Create DataArray with same coords as call_genotype to avoid alignment issues
+        mask_expanded = xr.DataArray(
+            mask_3d,
+            coords=self.dataset.call_genotype.coords,
+            dims=self.dataset.call_genotype.dims
         )
         
         genotypes_masked = xr.where(mask_expanded, -1, self.dataset.call_genotype)
@@ -424,13 +431,20 @@ class GenomicDataset:
         print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
         print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
         
-        # Create mask with proper broadcasting - don't specify coords to avoid dimension mismatch
-        mask_expanded = xr.DataArray(
+        # Set all genotypes at non-callable sites to -1 (stays lazy with dask)
+        # Create broadcasted mask using dask to stay lazy
+        mask_3d = da.broadcast_to(
             non_callable_mask[:, np.newaxis, np.newaxis],
-            dims=['variants', 'samples', 'ploidy']
+            self.dataset.call_genotype.shape
         )
         
-        # Set all genotypes at non-callable sites to -1 (stays lazy with dask)
+        # Create DataArray with same coords as call_genotype to avoid alignment issues
+        mask_expanded = xr.DataArray(
+            mask_3d,
+            coords=self.dataset.call_genotype.coords,
+            dims=self.dataset.call_genotype.dims
+        )
+        
         genotypes_masked = xr.where(mask_expanded, -1, self.dataset.call_genotype)
         
         # Update the dataset
