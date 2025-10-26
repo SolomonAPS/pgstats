@@ -110,7 +110,6 @@ class GenomicDataset:
         # Process callable sites if configured
         if self.callable_config.bed_file:
             self._load_callable_sites()
-            print(f"Debug: After _load_callable_sites, dataset.sizes: {self.dataset.sizes}", flush=True)
     
     def _validate_dataset(self):
         """Validate that the dataset has required fields."""
@@ -213,10 +212,7 @@ class GenomicDataset:
                     names=['chrom', 'start', 'end'],
                     usecols=[0, 1, 2]
                 )
-                print(f"Debug: About to create PyRanges object (cached path)", flush=True)
                 self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
-                print(f"Debug: PyRanges object created successfully (cached path)", flush=True)
-                print(f"Debug: dataset.sizes after PyRanges (cached): {self.dataset.sizes}", flush=True)
                 
                 # Use cached mask directly
                 self._apply_cached_mask(cached_mask)
@@ -232,10 +228,7 @@ class GenomicDataset:
         )
         
         # Store BED data as PyRanges object for efficient L calculation
-        print(f"Debug: About to create PyRanges object", flush=True)
         self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
-        print(f"Debug: PyRanges object created successfully", flush=True)
-        print(f"Debug: dataset.sizes after PyRanges: {self.dataset.sizes}", flush=True)
         
         # Create non-callable sites mask and apply it
         callable_mask = self._apply_callable_sites_mask(bed_df)
@@ -257,12 +250,6 @@ class GenomicDataset:
         
         # Use the cached mask directly
         non_callable_mask = ~callable_mask
-        
-        # Expand mask and apply to genotypes (lazy operation)
-        print(f"Debug: non_callable_mask shape: {non_callable_mask.shape}", flush=True)
-        print(f"Debug: dataset.samples shape: {self.dataset.samples.shape}", flush=True)
-        print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
-        print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
         
         # Create broadcasted mask using dask to stay lazy
         mask_3d = da.broadcast_to(
@@ -424,14 +411,6 @@ class GenomicDataset:
         # Use xarray.where() to stay lazy with dask arrays
         non_callable_mask = ~callable_mask
         
-        # Expand mask to match genotype dimensions (variants, samples, ploidy)
-        # non_callable_mask is shape (variants,), need to broadcast to (variants, samples, ploidy)
-        print(f"Debug: non_callable_mask shape: {non_callable_mask.shape}", flush=True)
-        print(f"Debug: dataset.samples shape: {self.dataset.samples.shape}", flush=True)
-        print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
-        print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
-        
-        # Set all genotypes at non-callable sites to -1 (stays lazy with dask)
         # Create broadcasted mask using dask to stay lazy
         mask_3d = da.broadcast_to(
             non_callable_mask[:, np.newaxis, np.newaxis],
@@ -851,10 +830,6 @@ class GenomicDataset:
         Returns:
             Dataset with normalized theta estimators
         """
-        print(f"Debug: Starting theta normalization...", flush=True)
-        print(f"Debug: window_stats shape: {window_stats.sizes}", flush=True)
-        print(f"Debug: dataset shape: {self.dataset.sizes}", flush=True)
-        
         result = window_stats.copy()
         
         # Calculate callable sites per window based on BED overlap
