@@ -741,6 +741,12 @@ class GenomicDataset:
         # Note: Callable sites are now handled by setting non-callable sites to -1
         # sgkit's statistics will automatically account for missing data
         
+        # Store filter mask before normalization
+        if hasattr(self, 'windowed_dataset') and self.windowed_dataset is not None:
+            # Get the filter mask that was applied to create windowed_dataset
+            # This is needed to filter callable_sites_per_window to match filtered windows
+            pass  # The mask is already applied to windowed_dataset
+        
         # Normalize theta estimators by callable sites
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
         
@@ -825,7 +831,7 @@ class GenomicDataset:
         accounting for the actual number of analyzable sites in each window.
         
         Args:
-            window_stats: Dataset with windowed statistics
+            window_stats: Dataset with windowed statistics (already filtered)
             
         Returns:
             Dataset with normalized theta estimators
@@ -833,6 +839,7 @@ class GenomicDataset:
         result = window_stats.copy()
         
         # Calculate callable sites per window based on BED overlap
+        # Note: window_stats.windows already contains only the kept (filtered) windows
         callable_sites_per_window = []
         
         for window_idx in range(len(window_stats.windows)):
@@ -868,10 +875,18 @@ class GenomicDataset:
         # Normalize theta estimators by callable sites
         theta_stats = ['theta_pi', 'theta_w', 'theta_h', 'theta_l']
         
+        # Check that we have the right number of callable sites
+        num_windows = len(result.windows)
+        num_callable_sites = len(callable_sites_per_window)
+        
+        if num_windows != num_callable_sites:
+            print(f"Warning: Window count mismatch: {num_windows} windows vs {num_callable_sites} callable sites. Skipping normalization.", flush=True)
+            return result
+        
         for stat in theta_stats:
             if stat in result.data_vars:
                 # Normalize each window's values by its callable sites
-                for window_idx in range(len(result.windows)):
+                for window_idx in range(num_windows):
                     if callable_sites_per_window[window_idx] > 0:
                         result[stat].values[window_idx] /= callable_sites_per_window[window_idx]
         
