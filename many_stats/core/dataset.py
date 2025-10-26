@@ -113,6 +113,9 @@ class GenomicDataset:
         self.data_source_path = data_source if isinstance(data_source, str) else None
         
         # Load data
+        if self.enable_profiling:
+            start = time.time()
+        
         if isinstance(data_source, str):
             data_path = Path(data_source)
             if data_path.suffix in ['.zarr'] or 'zarr' in str(data_path):
@@ -124,6 +127,10 @@ class GenomicDataset:
                 self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr, temp_dir=zarr_dir, output_dir=output_dir)
         else:
             self.dataset = data_source
+        
+        if self.enable_profiling:
+            elapsed = time.time() - start
+            print(f"[Timing] Load VCF/Zarr: {elapsed:.2f}s", flush=True)
         
         # Initialize callable sites tracking
         self.callable_sites = None
@@ -138,7 +145,12 @@ class GenomicDataset:
         
         # Process callable sites if configured
         if self.callable_config.bed_file:
+            if self.enable_profiling:
+                start = time.time()
             self._load_callable_sites()
+            if self.enable_profiling:
+                elapsed = time.time() - start
+                print(f"[Timing] Load BED and apply mask: {elapsed:.2f}s", flush=True)
     
     def _validate_dataset(self):
         """Validate that the dataset has required fields."""
