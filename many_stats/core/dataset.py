@@ -627,8 +627,22 @@ class GenomicDataset:
             # Windowed analysis
             if start is not None and end is not None:
                 print(f"Creating windows for region {start}-{end}", flush=True)
-                # Filter dataset to region first
-                region_dataset = self._filter_to_region(start, end)
+                
+                # Check if dataset is already filtered (when called from calculate_stats_for_regions)
+                # If the dataset variants fall within the region bounds, skip re-filtering
+                positions = self.dataset.variant_position.values
+                dataset_already_filtered = (
+                    len(positions) > 0 and
+                    positions[0] >= start and 
+                    positions[-1] <= end
+                )
+                
+                if dataset_already_filtered:
+                    # Dataset is already filtered to this region, use it directly
+                    region_dataset = self.dataset
+                else:
+                    # Filter dataset to region
+                    region_dataset = self._filter_to_region(start, end)
                 
                 # Check if region has any variants
                 if len(region_dataset.variants) == 0:
