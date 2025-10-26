@@ -252,6 +252,11 @@ class GenomicDataset:
         non_callable_mask = ~callable_mask
         
         # Expand mask and apply to genotypes (lazy operation)
+        print(f"Debug: non_callable_mask shape: {non_callable_mask.shape}", flush=True)
+        print(f"Debug: dataset.samples shape: {self.dataset.samples.shape}", flush=True)
+        print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
+        print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
+        
         mask_expanded = xr.DataArray(
             non_callable_mask[:, np.newaxis, np.newaxis],
             dims=['variants', 'samples', 'ploidy'],
@@ -411,6 +416,11 @@ class GenomicDataset:
         
         # Expand mask to match genotype dimensions (variants, samples, ploidy)
         # non_callable_mask is shape (variants,), need to broadcast to (variants, samples, ploidy)
+        print(f"Debug: non_callable_mask shape: {non_callable_mask.shape}", flush=True)
+        print(f"Debug: dataset.samples shape: {self.dataset.samples.shape}", flush=True)
+        print(f"Debug: dataset.variants shape: {self.dataset.variants.shape}", flush=True)
+        print(f"Debug: dataset.ploidy shape: {self.dataset.ploidy.shape}", flush=True)
+        
         mask_expanded = xr.DataArray(
             non_callable_mask[:, np.newaxis, np.newaxis],
             dims=['variants', 'samples', 'ploidy'],
