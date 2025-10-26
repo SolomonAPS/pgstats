@@ -255,6 +255,11 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         action='store_true',
         help='Do not write header row in output'
     )
+    output_group.add_argument(
+        '--profile',
+        action='store_true',
+        help='Enable detailed timing output for performance monitoring'
+    )
 
 
 def add_info_arguments(parser: argparse.ArgumentParser):
@@ -419,14 +424,24 @@ def run_stats_command(args):
     print(f"Loading VCF: {input_path}", flush=True)
     
     try:
+        # Determine if we're doing multi-region analysis (use lazy masking)
+        use_lazy_masking = regions_list is not None
+        
         genomic_ds = GenomicDataset(
             data_source=str(input_path),
             callable_config=callable_config,
             window_config=window_config,
             keep_zarr=args.keep_zarr,
             zarr_dir=args.zarr_dir,
-            output_dir=output_dir
+            output_dir=output_dir,
+            enable_profiling=args.profile
         )
+        
+        # If using BED file with multi-region analysis, use lazy loading
+        if use_lazy_masking and callable_config.bed_file:
+            # Load BED in lazy mode (don't mask genome-wide, mask each region individually)
+            genomic_ds._load_callable_sites(lazy_mode=True)
+        
         print(f"Debug: GenomicDataset created successfully", flush=True)
         print(f"Debug: genomic_ds.dataset.sizes: {genomic_ds.dataset.sizes}", flush=True)
     except Exception as e:

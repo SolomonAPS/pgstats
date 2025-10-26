@@ -15,6 +15,8 @@ from typing import Optional, Union, List, Dict, Any, Tuple
 import dask.array as da
 from dataclasses import dataclass
 import sgkit as sg
+import time
+from functools import wraps
 
 from many_stats.io.loaders import load_vcf_simple
 from many_stats.stats.sfs_statistics import (
@@ -24,6 +26,30 @@ from many_stats.stats.sfs_statistics import (
 from many_stats.stats.ld_statistics import (
     calculate_ld_matrix, calculate_windowed_ld
 )
+
+
+def time_operation(operation_name: str = None):
+    """
+    Decorator to time a method call and print the result.
+    
+    Args:
+        operation_name: Name to display in timing output
+    """
+    def decorator(func):
+        name = operation_name or func.__name__
+        
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if hasattr(self, 'enable_profiling') and self.enable_profiling:
+                start = time.time()
+                result = func(self, *args, **kwargs)
+                elapsed = time.time() - start
+                print(f"[Timing] {name}: {elapsed:.2f}s", flush=True)
+            else:
+                result = func(self, *args, **kwargs)
+            return result
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -64,7 +90,8 @@ class GenomicDataset:
                  window_config: Optional[WindowConfig] = None,
                  keep_zarr: bool = False,
                  zarr_dir: Optional[str] = None,
-                 output_dir: Optional[str] = None):
+                 output_dir: Optional[str] = None,
+                 enable_profiling: bool = False):
         """
         Initialize GenomicDataset.
         
@@ -75,12 +102,14 @@ class GenomicDataset:
             keep_zarr: Whether to keep intermediate Zarr files (VCF only)
             zarr_dir: Custom directory for Zarr files (overrides default logic)
             output_dir: Output directory for analysis (used for Zarr location with --keep-zarr)
+            enable_profiling: Enable timing output for performance monitoring
         """
         self.callable_config = callable_config or CallableSitesConfig()
         self.window_config = window_config or WindowConfig()
         self.keep_zarr = keep_zarr
         self.zarr_dir = zarr_dir
         self.output_dir = output_dir
+        self.enable_profiling = enable_profiling
         self.data_source_path = data_source if isinstance(data_source, str) else None
         
         # Load data
@@ -191,8 +220,14 @@ class GenomicDataset:
         except Exception as e:
             print(f"  WARNING: Could not save mask cache: {e}", flush=True)
     
-    def _load_callable_sites(self):
-        """Load callable sites from BED file and mask non-callable sites."""
+    def _load_callable_sites(self, lazy_mode: bool = False):
+        """
+        Load callable sites from BED file and optionally mask non-callable sites.
+        
+        Args:
+            lazy_mode: If True, only load BED data for L calculation, don't mask yet.
+                      Use this for multi-region analysis to avoid masking all variants.
+        """
         if not self.callable_config.bed_file:
             return
         
@@ -200,26 +235,7 @@ class GenomicDataset:
         if not bed_path.exists():
             raise FileNotFoundError(f"BED file not found: {bed_path}")
         
-        # Try to load cached mask first
-        cache_path = self._get_bed_cache_path(bed_path)
-        if cache_path:
-            cached_mask = self._load_cached_mask(cache_path)
-            if cached_mask is not None:
-                # Load BED file for PyRanges (needed for L calculation even with cached mask)
-                bed_df = pd.read_csv(
-                    bed_path, 
-                    sep='\t', 
-                    names=['chrom', 'start', 'end'],
-                    usecols=[0, 1, 2]
-                )
-                self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
-                
-                # Use cached mask directly
-                self._apply_cached_mask(cached_mask)
-                print(f"Applied callable sites mask: {self.callable_sites:,} callable sites (from cache)", flush=True)
-                return
-        
-        # Load BED file
+        # Load BED file for PyRanges (always needed for L calculation)
         bed_df = pd.read_csv(
             bed_path, 
             sep='\t', 
@@ -227,10 +243,43 @@ class GenomicDataset:
             usecols=[0, 1, 2]
         )
         
-        # Store BED data as PyRanges object for efficient L calculation
+        # Normalize chromosome names
+        contig_names = self.dataset.contig_id.values
+        vcf_chroms = set(contig_names.astype(str))
+        bed_chroms = set(bed_df['chrom'].astype(str).unique())
+        
+        # Sample chromosomes to detect naming convention
+        sample_vcf_chr = str(next(iter(vcf_chroms)))
+        sample_bed_chr = str(next(iter(bed_chroms)))
+        
+        bed_df = bed_df.copy()
+        if sample_bed_chr.startswith('chr') and not sample_vcf_chr.startswith('chr'):
+            print(f"Normalizing: Stripping 'chr' prefix from BED chromosomes", flush=True)
+            bed_df['chrom'] = bed_df['chrom'].str.replace('^chr', '', regex=True)
+        elif not sample_bed_chr.startswith('chr') and sample_vcf_chr.startswith('chr'):
+            print(f"Normalizing: Adding 'chr' prefix to BED chromosomes", flush=True)
+            bed_df['chrom'] = 'chr' + bed_df['chrom'].astype(str)
+        
+        # Store BED data as PyRanges object
         self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
         
-        # Create non-callable sites mask and apply it
+        # If lazy mode, just store BED data without masking
+        if lazy_mode:
+            print(f"Loaded BED file for L calculation (lazy mode: masking deferred)", flush=True)
+            return
+        
+        # Non-lazy mode: apply mask to entire dataset
+        # Try to load cached mask first
+        cache_path = self._get_bed_cache_path(bed_path)
+        if cache_path:
+            cached_mask = self._load_cached_mask(cache_path)
+            if cached_mask is not None:
+                # Use cached mask directly
+                self._apply_cached_mask(cached_mask)
+                print(f"Applied callable sites mask: {self.callable_sites:,} callable sites (from cache)", flush=True)
+                return
+        
+        # Create non-callable sites mask and apply it (bed_df already loaded above)
         callable_mask = self._apply_callable_sites_mask(bed_df)
         
         # Save mask to cache if enabled
@@ -442,6 +491,85 @@ class GenomicDataset:
         
         # Return the callable mask for caching
         return callable_mask
+    
+    def _apply_mask_to_region(self, region_dataset: xr.Dataset, region_start: int, region_end: int, contig_name: str) -> xr.Dataset:
+        """
+        Apply BED mask to variants within a specific region only (optimized for multi-region analysis).
+        
+        Args:
+            region_dataset: Filtered dataset containing only variants in the region
+            region_start: Start position of the region (1-based)
+            region_end: End position of the region (1-based)
+            contig_name: Name of the contig/chromosome
+            
+        Returns:
+            Dataset with BED mask applied to region variants only
+        """
+        if not hasattr(self, 'bed_gr') or self.bed_gr is None:
+            print("No BED file loaded, skipping region masking")
+            return region_dataset
+        
+        if self.enable_profiling:
+            start = time.time()
+        
+        positions = region_dataset.variant_position.values
+        contigs = region_dataset.variant_contig.values
+        contig_names = region_dataset.contig_id.values
+        
+        # Create PyRanges object for variants in this region
+        variants_df = pd.DataFrame({
+            'Chromosome': [contig_name] * len(positions),
+            'Start': positions,
+            'End': positions + 1,
+            'variant_idx': np.arange(len(positions))
+        })
+        
+        variants_gr = pr.PyRanges(variants_df)
+        
+        # Find overlaps with BED regions
+        overlapping_gr = variants_gr.overlap(self.bed_gr)
+        
+        # Create callable mask for this region's variants
+        if self.callable_config.bed_format == "non_callable":
+            callable_mask = np.ones(len(positions), dtype=bool)
+            if len(overlapping_gr) > 0:
+                overlap_indices = overlapping_gr.variant_idx.values
+                callable_mask[overlap_indices] = False
+        else:  # callable
+            callable_mask = np.zeros(len(positions), dtype=bool)
+            if len(overlapping_gr) > 0:
+                overlap_indices = overlapping_gr.variant_idx.values
+                callable_mask[overlap_indices] = True
+        
+        # Apply mask to genotypes
+        non_callable_mask = ~callable_mask
+        mask_3d = da.broadcast_to(
+            non_callable_mask[:, np.newaxis, np.newaxis],
+            region_dataset.call_genotype.shape
+        )
+        
+        mask_expanded = xr.DataArray(
+            mask_3d,
+            coords=region_dataset.call_genotype.coords,
+            dims=region_dataset.call_genotype.dims
+        )
+        
+        genotypes_masked = xr.where(mask_expanded, -1, region_dataset.call_genotype)
+        region_dataset = region_dataset.assign(call_genotype=genotypes_masked)
+        
+        updated_mask = (genotypes_masked == -1)
+        region_dataset = region_dataset.assign(call_genotype_mask=updated_mask)
+        
+        n_masked = np.sum(non_callable_mask)
+        n_callable = np.sum(callable_mask)
+        
+        if self.enable_profiling:
+            elapsed = time.time() - start
+            print(f"[Timing] Region BED masking: {elapsed:.2f}s ({n_masked:,} masked)", flush=True)
+        else:
+            print(f"  Masked {n_masked:,} non-callable sites in region ({n_callable:,} callable)", flush=True)
+        
+        return region_dataset
     
     def filter_missing_data(self, max_missing: Optional[float] = None):
         """
@@ -838,37 +966,12 @@ class GenomicDataset:
         """
         result = window_stats.copy()
         
-        # Calculate callable sites per window based on BED overlap
-        # Note: window_stats.windows already contains only the kept (filtered) windows
-        callable_sites_per_window = []
-        
-        for window_idx in range(len(window_stats.windows)):
-            window_start_idx = window_stats.window_start.values[window_idx]
-            window_stop_idx = window_stats.window_stop.values[window_idx]
-            
-            # Convert variant indices to genomic positions and determine contig
-            positions = self.dataset.variant_position.values
-            contigs = self.dataset.variant_contig.values
-            contig_names = self.dataset.contig_id.values
-            
-            if window_start_idx < len(positions) and window_stop_idx > 0:
-                window_start_pos = positions[window_start_idx]
-                window_stop_pos = positions[window_stop_idx-1] if window_stop_idx-1 < len(positions) else positions[-1]
-                window_length = window_stop_pos - window_start_pos + 1
-                
-                # Determine contig for this window (use the contig of the first variant)
-                contig_idx = contigs[window_start_idx]
-                contig_name = contig_names[contig_idx]
-            else:
-                # Empty window
-                window_start_pos = 0
-                window_stop_pos = 0
-                window_length = 0
-                contig_name = None
-            
-            # Calculate callable length in this window using genomic positions and contig
-            callable_length = self._calculate_callable_length_in_window(window_start_pos, window_stop_pos, contig_name)
-            callable_sites_per_window.append(callable_length)
+        # Use vectorized batch calculation if BED file available
+        if hasattr(self, 'bed_gr') and self.bed_gr is not None and self.callable_config.bed_file:
+            callable_sites_per_window = self._calculate_callable_lengths_batch(window_stats)
+        else:
+            # Fall back to per-window calculation (no BED file or old method)
+            callable_sites_per_window = self._calculate_callable_lengths_per_window(window_stats)
         
         callable_sites_per_window = np.array(callable_sites_per_window)
         
@@ -891,6 +994,183 @@ class GenomicDataset:
                         result[stat].values[window_idx] /= callable_sites_per_window[window_idx]
         
         return result
+    
+    def _calculate_callable_lengths_batch(self, window_stats: xr.Dataset) -> np.ndarray:
+        """
+        Vectorized calculation of callable sites for all windows at once.
+        
+        This is much faster than calculating callable length for each window individually.
+        
+        Args:
+            window_stats: Dataset with windowed statistics
+            
+        Returns:
+            Array of callable site counts per window
+        """
+        if self.enable_profiling:
+            start = time.time()
+        
+        num_windows = len(window_stats.windows)
+        positions = self.dataset.variant_position.values
+        contigs = self.dataset.variant_contig.values
+        contig_names = self.dataset.contig_id.values
+        
+        # Convert window indices to genomic positions
+        window_start_positions = []
+        window_end_positions = []
+        window_contigs = []
+        
+        for window_idx in range(num_windows):
+            window_start_idx = window_stats.window_start.values[window_idx]
+            window_stop_idx = window_stats.window_stop.values[window_idx]
+            
+            if window_start_idx < len(positions) and window_stop_idx > 0:
+                window_start_pos = positions[window_start_idx]
+                window_end_pos = positions[window_stop_idx-1] if window_stop_idx-1 < len(positions) else positions[-1]
+                window_length = window_end_pos - window_start_pos + 1
+                
+                # Determine contig for this window
+                contig_idx = contigs[window_start_idx]
+                contig_name = contig_names[contig_idx]
+                
+                window_start_positions.append(window_start_pos)
+                window_end_positions.append(window_end_pos)
+                window_contigs.append(contig_name)
+            else:
+                # Empty window
+                window_start_positions.append(0)
+                window_end_positions.append(0)
+                window_contigs.append(None)
+        
+        # Create PyRanges for all windows at once
+        windows_df = pd.DataFrame({
+            'Chromosome': window_contigs,
+            'Start': window_start_positions,
+            'End': window_end_positions,
+            'window_idx': range(num_windows)
+        })
+        
+        # Remove windows with None contig
+        valid_windows = windows_df['Chromosome'].notna()
+        windows_gr = pr.PyRanges(windows_df[valid_windows])
+        
+        if len(windows_gr) == 0:
+            return np.zeros(num_windows)
+        
+        # Get BED regions
+        bed_df = self.bed_gr.df.copy()
+        
+        if self.callable_config.bed_format == "non_callable":
+            # Calculate masked length per window
+            callable_lengths = []
+            
+            for window_idx in range(num_windows):
+                if window_contigs[window_idx] is None:
+                    callable_lengths.append(0)
+                    continue
+                
+                window_start = window_start_positions[window_idx]
+                window_end = window_end_positions[window_idx]
+                window_length = window_end - window_start
+                
+                # Filter BED regions for this contig
+                contig_bed = bed_df[bed_df['Chromosome'] == window_contigs[window_idx]]
+                
+                # Calculate overlap
+                masked_length = 0
+                for _, row in contig_bed.iterrows():
+                    overlap_start = max(window_start, row['Start'])
+                    overlap_end = min(window_end, row['End'])
+                    if overlap_start < overlap_end:
+                        masked_length += overlap_end - overlap_start
+                
+                callable_length = window_length - masked_length
+                callable_lengths.append(max(1, callable_length))
+            
+            if self.enable_profiling:
+                elapsed = time.time() - start
+                print(f"[Timing] Vectorized callable length calculation: {elapsed:.2f}s ({num_windows} windows)", flush=True)
+            
+            return np.array(callable_lengths)
+            
+        elif self.callable_config.bed_format == "callable":
+            # Calculate callable length per window
+            callable_lengths = []
+            
+            for window_idx in range(num_windows):
+                if window_contigs[window_idx] is None:
+                    callable_lengths.append(0)
+                    continue
+                
+                window_start = window_start_positions[window_idx]
+                window_end = window_end_positions[window_idx]
+                
+                # Filter BED regions for this contig
+                contig_bed = bed_df[bed_df['Chromosome'] == window_contigs[window_idx]]
+                
+                # Calculate overlap
+                callable_length = 0
+                for _, row in contig_bed.iterrows():
+                    overlap_start = max(window_start, row['Start'])
+                    overlap_end = min(window_end, row['End'])
+                    if overlap_start < overlap_end:
+                        callable_length += overlap_end - overlap_start
+                
+                callable_lengths.append(max(1, callable_length))
+            
+            if self.enable_profiling:
+                elapsed = time.time() - start
+                print(f"[Timing] Vectorized callable length calculation: {elapsed:.2f}s ({num_windows} windows)", flush=True)
+            
+            return np.array(callable_lengths)
+        
+        else:
+            raise ValueError(f"Unknown bed_format: {self.callable_config.bed_format}")
+    
+    def _calculate_callable_lengths_per_window(self, window_stats: xr.Dataset) -> List[int]:
+        """
+        Calculate callable sites per window using the old per-window method (for fallback).
+        
+        Args:
+            window_stats: Dataset with windowed statistics
+            
+        Returns:
+            List of callable site counts per window
+        """
+        if self.enable_profiling:
+            start = time.time()
+        
+        callable_sites_per_window = []
+        
+        positions = self.dataset.variant_position.values
+        contigs = self.dataset.variant_contig.values
+        contig_names = self.dataset.contig_id.values
+        
+        for window_idx in range(len(window_stats.windows)):
+            window_start_idx = window_stats.window_start.values[window_idx]
+            window_stop_idx = window_stats.window_stop.values[window_idx]
+            
+            if window_start_idx < len(positions) and window_stop_idx > 0:
+                window_start_pos = positions[window_start_idx]
+                window_stop_pos = positions[window_stop_idx-1] if window_stop_idx-1 < len(positions) else positions[-1]
+                
+                # Determine contig for this window
+                contig_idx = contigs[window_start_idx]
+                contig_name = contig_names[contig_idx]
+            else:
+                window_start_pos = 0
+                window_stop_pos = 0
+                contig_name = None
+            
+            # Calculate callable length
+            callable_length = self._calculate_callable_length_in_window(window_start_pos, window_stop_pos, contig_name)
+            callable_sites_per_window.append(callable_length)
+        
+        if self.enable_profiling:
+            elapsed = time.time() - start
+            print(f"[Timing] Per-window callable length calculation: {elapsed:.2f}s ({len(window_stats.windows)} windows)", flush=True)
+        
+        return callable_sites_per_window
     
     def _calculate_callable_length_in_window(self, window_start: int, window_stop: int, contig_name: str = None) -> int:
         """
@@ -1191,6 +1471,9 @@ class GenomicDataset:
         print(f"\nAnalyzing {len(regions)} regions with {window_size:,}bp windows...")
         
         for i, (contig, region_start, region_end) in enumerate(regions, 1):
+            if self.enable_profiling:
+                region_start_time = time.time()
+            
             print(f"\n[{i}/{len(regions)}] Analyzing region {contig}:{region_start:,}-{region_end:,}")
             
             # Update window config for this region
@@ -1201,6 +1484,22 @@ class GenomicDataset:
             self.window_config.min_variants = min_variants
             
             try:
+                # Filter to region first
+                if self.enable_profiling:
+                    start = time.time()
+                region_dataset = self._filter_to_region(region_start, region_end)
+                if self.enable_profiling:
+                    elapsed = time.time() - start
+                    print(f"[Timing] Filter to region: {elapsed:.2f}s", flush=True)
+                
+                # Apply BED mask to region variants only (lazy masking optimization)
+                if use_callable_sites and hasattr(self, 'bed_gr') and self.bed_gr is not None:
+                    region_dataset = self._apply_mask_to_region(region_dataset, region_start, region_end, contig)
+                
+                # Temporarily swap dataset to use region_dataset
+                original_dataset = self.dataset
+                self.dataset = region_dataset
+                
                 # Create windows for this region
                 self.create_windows()
                 
@@ -1222,8 +1521,19 @@ class GenomicDataset:
                 
                 print(f"  Analyzed {len(region_df)} windows")
                 
+                # Restore original dataset for next region
+                self.dataset = original_dataset
+                self.windowed_dataset = None
+                
+                if self.enable_profiling:
+                    elapsed = time.time() - region_start_time
+                    print(f"[Timing] Total region time: {elapsed:.2f}s", flush=True)
+                
             except Exception as e:
                 print(f"  ERROR: analyzing region {contig}:{region_start}-{region_end}: {e}")
+                # Restore original dataset even on error
+                if 'original_dataset' in locals():
+                    self.dataset = original_dataset
                 continue
         
         if not all_results:
