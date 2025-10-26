@@ -213,7 +213,10 @@ class GenomicDataset:
                     names=['chrom', 'start', 'end'],
                     usecols=[0, 1, 2]
                 )
+                print(f"Debug: About to create PyRanges object (cached path)", flush=True)
                 self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
+                print(f"Debug: PyRanges object created successfully (cached path)", flush=True)
+                print(f"Debug: dataset.sizes after PyRanges (cached): {self.dataset.sizes}", flush=True)
                 
                 # Use cached mask directly
                 self._apply_cached_mask(cached_mask)
@@ -229,7 +232,10 @@ class GenomicDataset:
         )
         
         # Store BED data as PyRanges object for efficient L calculation
+        print(f"Debug: About to create PyRanges object", flush=True)
         self.bed_gr = pr.PyRanges(bed_df.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
+        print(f"Debug: PyRanges object created successfully", flush=True)
+        print(f"Debug: dataset.sizes after PyRanges: {self.dataset.sizes}", flush=True)
         
         # Create non-callable sites mask and apply it
         callable_mask = self._apply_callable_sites_mask(bed_df)
