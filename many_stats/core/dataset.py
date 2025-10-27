@@ -700,7 +700,8 @@ class GenomicDataset:
         
         # DON'T filter windows here - do it after stats calculation to avoid dimension mismatches
         # Filter windows by minimum variants if specified (store mask for later)
-        if self.window_config.min_variants > 1:
+        # Allow min_variants=0 to keep all windows and let users filter later
+        if self.window_config.min_variants >= 0:
             self._filter_windows_by_variants()
     
     def _check_window_boundaries(self):
@@ -811,7 +812,11 @@ class GenomicDataset:
         
         n_filtered = np.sum(self.window_filter_mask)
         n_removed = len(self.window_filter_mask) - n_filtered
-        print(f"Will filter to {n_filtered} windows (removing {n_removed} with <{self.window_config.min_variants} variants after stats calculation)")
+        
+        if self.window_config.min_variants == 0:
+            print(f"Keeping all {n_filtered} windows (min_variants=0; users can filter by n_variants column)")
+        else:
+            print(f"Will filter to {n_filtered} windows (removing {n_removed} with <{self.window_config.min_variants} variants after stats calculation)")
     
     def _filter_to_region(self, start: int, end: int) -> xr.Dataset:
         """Filter dataset to a specific genomic region."""
@@ -851,6 +856,12 @@ class GenomicDataset:
         
         # Start with a copy of windowed_dataset (may already be filtered by min_variants)
         result_dataset = self.windowed_dataset.copy()
+        
+        # Add n_variants per window (window_stops - window_starts)
+        window_starts = self.windowed_dataset.window_start.values
+        window_stops = self.windowed_dataset.window_stop.values
+        n_variants_per_window = window_stops - window_starts
+        result_dataset['n_variants'] = (['windows'], n_variants_per_window)
         
         # Store the number of windows BEFORE filtering to track what will be removed
         n_windows_before_filtering = len(self.windowed_dataset.windows)
