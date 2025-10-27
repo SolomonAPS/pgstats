@@ -872,12 +872,17 @@ class GenomicDataset:
                 stat_ds = theta_pi(self.windowed_dataset)
                 print(f"[DEBUG] theta_pi computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"[DEBUG] After theta_pi merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
             elif stat in ['theta_w', 'watterson_theta']:
                 stat_ds = theta_w(self.windowed_dataset)
+                print(f"[DEBUG] theta_w computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"[DEBUG] After merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
             elif stat in ['theta_h', 'fay_wu_theta']:
                 stat_ds = theta_h(self.windowed_dataset)
+                print(f"[DEBUG] theta_h computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"[DEBUG] After merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
             elif stat == 'theta_l':
                 stat_ds = theta_l(self.windowed_dataset)
                 result_dataset = result_dataset.merge(stat_ds)
@@ -920,7 +925,10 @@ class GenomicDataset:
         # sgkit's statistics will automatically account for missing data
         
         # Normalize theta estimators by callable sites
+        print(f"[DEBUG] About to normalize - result_dataset has {len(result_dataset.windows)} windows", flush=True)
+        result_dataset_before_norm = result_dataset.copy()
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
+        print(f"[DEBUG] After normalize - result_dataset has {len(result_dataset.windows)} windows", flush=True)
         
         # Now filter out windows with too few variants (after stats are calculated)
         print(f"[DEBUG] Before filtering: {len(result_dataset.windows)} windows in result_dataset", flush=True)
