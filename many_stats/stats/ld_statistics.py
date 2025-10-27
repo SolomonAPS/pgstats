@@ -529,9 +529,25 @@ def calculate_windowed_ld(ds: xr.Dataset,
         print(f"[DEBUG] Processed {n_valid} windows with valid LD statistics", flush=True)
     
     # Create result dataset with same number of windows as input
-    result = xr.Dataset({
-        'window_start': (['windows'], window_starts),
-        'window_end': (['windows'], window_stops),
+    result = xr.Dataset()
+    
+    # Copy window coordinates from input if they exist
+    if 'windows' in ds.dims:
+        result = result.assign_coords({
+            'windows': ds.windows,
+            'window_start': ds.window_start,
+            'window_stop': ds.window_stop
+        })
+    else:
+        # Create new window coordinates
+        result = result.assign_coords({
+            'windows': np.arange(n_windows),
+            'window_start': ('windows', window_starts),
+            'window_stop': ('windows', window_stops)
+        })
+    
+    # Add data variables
+    result = result.assign({
         'n_variants': (['windows'], n_variants_per_window),
         'n_pairs': (['windows'], n_pairs_per_window),
         'mean_D': (['windows'], mean_D),
