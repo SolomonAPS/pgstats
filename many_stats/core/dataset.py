@@ -914,7 +914,11 @@ class GenomicDataset:
             elif stat == 'ld_d':
                 # Calculate D values for each window
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                print(f"[DEBUG] ld_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(ld_ds.windows)} windows in output", flush=True)
+                if len(ld_ds.windows) != len(self.windowed_dataset.windows):
+                    print(f"[DEBUG] WARNING: ld_d dimension mismatch! Input {len(self.windowed_dataset.windows)}, output {len(ld_ds.windows)}", flush=True)
                 result_dataset = result_dataset.merge(ld_ds)
+                print(f"[DEBUG] After ld_d merge: result_dataset has {len(result_dataset.windows)} windows", flush=True)
             elif stat == 'ld_d_prime':
                 # Calculate D' values for each window
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
