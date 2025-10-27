@@ -442,7 +442,14 @@ def calculate_windowed_ld(ds: xr.Dataset,
         
         n_windows = len(window_starts)
     
-    window_results = []
+    # Initialize arrays for all windows
+    n_variants_per_window = np.zeros(n_windows, dtype=np.int32)
+    n_pairs_per_window = np.zeros(n_windows, dtype=np.int32)
+    mean_D = np.full(n_windows, np.nan)
+    mean_D_prime = np.full(n_windows, np.nan)
+    mean_r_squared = np.full(n_windows, np.nan)
+    max_r_squared = np.full(n_windows, np.nan)
+    mean_distance = np.full(n_windows, np.nan)
     
     if enable_profiling:
         print(f"[DEBUG] Starting LD calculation for {n_windows} windows", flush=True)
@@ -468,6 +475,9 @@ def calculate_windowed_ld(ds: xr.Dataset,
             in_window = (positions >= window_start_pos) & (positions < window_end_pos)
             window_variants = np.where(in_window)[0]
         
+        # Store number of variants even if < 2
+        n_variants_per_window[w_idx] = len(window_variants)
+        
         if len(window_variants) < 2:
             continue
         
@@ -489,11 +499,11 @@ def calculate_windowed_ld(ds: xr.Dataset,
                     
                     if not (np.isnan(D) or np.isnan(D_prime) or np.isnan(r_squared)):
                         window_ld.append({
-                        'D': D,
-                        'D_prime': D_prime,
-                        'r_squared': r_squared,
-                        'distance': abs(positions[var_j] - positions[var_i])
-                    })
+                            'D': D,
+                            'D_prime': D_prime,
+                            'r_squared': r_squared,
+                            'distance': abs(positions[var_j] - positions[var_i])
+                        })
                 except Exception as e:
                     if enable_profiling:
                         print(f"[WARNING] LD calculation failed for variants {var_i}-{var_j}: {str(e)}", flush=True)
@@ -504,61 +514,31 @@ def calculate_windowed_ld(ds: xr.Dataset,
             import pandas as pd
             window_df = pd.DataFrame(window_ld)
             
-            # Get window boundaries for output
-            if 'windows' in ds.dims:
-                # For existing windows, use the window boundaries we already have
-                window_start_out = window_start_pos
-                window_end_out = window_end_pos
-            else:
-                # For new windows, use the position boundaries
-                window_start_out = window_start_pos
-                window_end_out = window_end_pos
-            
-            window_results.append({
-                'window_start': window_start_out,
-                'window_end': window_end_out,
-                'n_variants': len(window_variants),
-                'n_pairs': len(window_ld),
-                'mean_D': window_df['D'].mean(),
-                'mean_D_prime': window_df['D_prime'].mean(),
-                'mean_r_squared': window_df['r_squared'].mean(),
-                'max_r_squared': window_df['r_squared'].max(),
-                'mean_distance': window_df['distance'].mean()
-            })
+            # Store statistics for this window
+            n_pairs_per_window[w_idx] = len(window_ld)
+            mean_D[w_idx] = window_df['D'].mean()
+            mean_D_prime[w_idx] = window_df['D_prime'].mean()
+            mean_r_squared[w_idx] = window_df['r_squared'].mean()
+            max_r_squared[w_idx] = window_df['r_squared'].max()
+            mean_distance[w_idx] = window_df['distance'].mean()
     
     if enable_profiling:
         elapsed = time.time() - start_time
         print(f"[Timing] LD calculation completed in {elapsed:.2f}s", flush=True)
-        print(f"[DEBUG] Processed {len(window_results)} windows with valid LD statistics", flush=True)
+        n_valid = np.sum(~np.isnan(mean_D))
+        print(f"[DEBUG] Processed {n_valid} windows with valid LD statistics", flush=True)
     
-    if not window_results:
-        # Return empty dataset
-        return xr.Dataset({
-            'window_start': (['windows'], []),
-            'window_end': (['windows'], []),
-            'n_variants': (['windows'], []),
-            'n_pairs': (['windows'], []),
-            'mean_D': (['windows'], []),
-            'mean_D_prime': (['windows'], []),
-            'mean_r_squared': (['windows'], []),
-            'max_r_squared': (['windows'], []),
-            'mean_distance': (['windows'], [])
-        })
-    
-    import pandas as pd
-    df = pd.DataFrame(window_results)
-    
-    # Convert to xarray Dataset
+    # Create result dataset with same number of windows as input
     result = xr.Dataset({
-        'window_start': (['windows'], df['window_start'].values),
-        'window_end': (['windows'], df['window_end'].values),
-        'n_variants': (['windows'], df['n_variants'].values),
-        'n_pairs': (['windows'], df['n_pairs'].values),
-        'mean_D': (['windows'], df['mean_D'].values),
-        'mean_D_prime': (['windows'], df['mean_D_prime'].values),
-        'mean_r_squared': (['windows'], df['mean_r_squared'].values),
-        'max_r_squared': (['windows'], df['max_r_squared'].values),
-        'mean_distance': (['windows'], df['mean_distance'].values)
+        'window_start': (['windows'], window_starts),
+        'window_end': (['windows'], window_stops),
+        'n_variants': (['windows'], n_variants_per_window),
+        'n_pairs': (['windows'], n_pairs_per_window),
+        'mean_D': (['windows'], mean_D),
+        'mean_D_prime': (['windows'], mean_D_prime),
+        'mean_r_squared': (['windows'], mean_r_squared),
+        'max_r_squared': (['windows'], max_r_squared),
+        'mean_distance': (['windows'], mean_distance)
     })
     
     return result
