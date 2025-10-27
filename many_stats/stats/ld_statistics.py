@@ -399,7 +399,8 @@ def calculate_ld_matrix(ds: xr.Dataset,
 
 def calculate_windowed_ld(ds: xr.Dataset,
                          call_genotype: str = "call_genotype",
-                         window_size: int = 1000) -> xr.Dataset:
+                         window_size: int = 1000,
+                         enable_profiling: bool = False) -> xr.Dataset:
     """
     Calculate LD statistics within windows.
     
@@ -443,12 +444,21 @@ def calculate_windowed_ld(ds: xr.Dataset,
     
     window_results = []
     
+    if enable_profiling:
+        print(f"[DEBUG] Starting LD calculation for {n_windows} windows", flush=True)
+        print(f"[DEBUG] Input dataset dimensions: {ds.dims}", flush=True)
+        import time
+        start_time = time.time()
+    
     for w_idx in range(n_windows):
         if 'windows' in ds.dims:
-            # Using existing windows: window_start and window_stop are variant indices
-            start_idx = window_starts[w_idx]
-            stop_idx = window_stops[w_idx]
-            window_variants = np.arange(start_idx, stop_idx)
+            # Using existing windows: window_start and window_stop are genomic positions
+            window_start_pos = window_starts[w_idx]
+            window_end_pos = window_stops[w_idx]
+            
+            # Find variants in this window using genomic positions
+            in_window = (positions >= window_start_pos) & (positions < window_end_pos)
+            window_variants = np.where(in_window)[0]
         else:
             # Creating new windows: window_start and window_stop are positions
             window_start_pos = window_starts[w_idx]
@@ -471,18 +481,23 @@ def calculate_windowed_ld(ds: xr.Dataset,
                 # Extract genotype pair
                 pair_genotypes = np.column_stack([dosage[var_i, :], dosage[var_j, :]])
                 
-                # Calculate LD statistics
-                D = calculate_ld_d(pair_genotypes)
-                D_prime = calculate_ld_d_prime(pair_genotypes)
-                r_squared = calculate_ld_r_squared(pair_genotypes)
-                
-                if not (np.isnan(D) or np.isnan(D_prime) or np.isnan(r_squared)):
-                    window_ld.append({
+                # Calculate LD statistics with error handling
+                try:
+                    D = calculate_ld_d(pair_genotypes)
+                    D_prime = calculate_ld_d_prime(pair_genotypes)
+                    r_squared = calculate_ld_r_squared(pair_genotypes)
+                    
+                    if not (np.isnan(D) or np.isnan(D_prime) or np.isnan(r_squared)):
+                        window_ld.append({
                         'D': D,
                         'D_prime': D_prime,
                         'r_squared': r_squared,
                         'distance': abs(positions[var_j] - positions[var_i])
                     })
+                except Exception as e:
+                    if enable_profiling:
+                        print(f"[WARNING] LD calculation failed for variants {var_i}-{var_j}: {str(e)}", flush=True)
+                    continue
         
         if window_ld:
             # Calculate summary statistics for this window
@@ -491,9 +506,9 @@ def calculate_windowed_ld(ds: xr.Dataset,
             
             # Get window boundaries for output
             if 'windows' in ds.dims:
-                # For existing windows, output actual genomic positions
-                window_start_out = positions[start_idx] if start_idx < len(positions) else 0
-                window_end_out = positions[stop_idx-1] if stop_idx > 0 and stop_idx-1 < len(positions) else 0
+                # For existing windows, use the window boundaries we already have
+                window_start_out = window_start_pos
+                window_end_out = window_end_pos
             else:
                 # For new windows, use the position boundaries
                 window_start_out = window_start_pos
@@ -510,6 +525,11 @@ def calculate_windowed_ld(ds: xr.Dataset,
                 'max_r_squared': window_df['r_squared'].max(),
                 'mean_distance': window_df['distance'].mean()
             })
+    
+    if enable_profiling:
+        elapsed = time.time() - start_time
+        print(f"[Timing] LD calculation completed in {elapsed:.2f}s", flush=True)
+        print(f"[DEBUG] Processed {len(window_results)} windows with valid LD statistics", flush=True)
     
     if not window_results:
         # Return empty dataset
@@ -548,51 +568,88 @@ def calculate_windowed_ld(ds: xr.Dataset,
 # CONVENIENCE FUNCTIONS
 # =============================================================================
 
-def ld_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
+def ld_d(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_profiling: bool = False) -> xr.Dataset:
     """
     Calculate D (coefficient of linkage disequilibrium) for all variant pairs.
     
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
+        enable_profiling: Whether to print timing and debug info
         
     Returns:
         Dataset with D values
     """
-    return calculate_ld_matrix(ds, call_genotype)
+    if enable_profiling:
+        print(f"[DEBUG] Computing LD D statistic...", flush=True)
+        import time
+        start_time = time.time()
+    
+    result = calculate_ld_matrix(ds, call_genotype)
+    
+    if enable_profiling:
+        elapsed = time.time() - start_time
+        print(f"[Timing] LD D calculation completed in {elapsed:.2f}s", flush=True)
+    
+    return result
 
 
-def ld_d_prime(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
+def ld_d_prime(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_profiling: bool = False) -> xr.Dataset:
     """
     Calculate D' (standardized D) for all variant pairs.
     
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
+        enable_profiling: Whether to print timing and debug info
         
     Returns:
         Dataset with D' values
     """
-    return calculate_ld_matrix(ds, call_genotype)
+    if enable_profiling:
+        print(f"[DEBUG] Computing LD D' statistic...", flush=True)
+        import time
+        start_time = time.time()
+    
+    result = calculate_ld_matrix(ds, call_genotype)
+    
+    if enable_profiling:
+        elapsed = time.time() - start_time
+        print(f"[Timing] LD D' calculation completed in {elapsed:.2f}s", flush=True)
+    
+    return result
 
 
-def ld_r_squared(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
+def ld_r_squared(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_profiling: bool = False) -> xr.Dataset:
     """
     Calculate r² (squared correlation coefficient) for all variant pairs.
     
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
+        enable_profiling: Whether to print timing and debug info
         
     Returns:
         Dataset with r² values
     """
-    return calculate_ld_matrix(ds, call_genotype)
+    if enable_profiling:
+        print(f"[DEBUG] Computing LD r² statistic...", flush=True)
+        import time
+        start_time = time.time()
+    
+    result = calculate_ld_matrix(ds, call_genotype)
+    
+    if enable_profiling:
+        elapsed = time.time() - start_time
+        print(f"[Timing] LD r² calculation completed in {elapsed:.2f}s", flush=True)
+    
+    return result
 
 
 def omega_statistic(ds: xr.Dataset, 
                    call_genotype: str = "call_genotype",
-                   window_size: int = 10) -> xr.Dataset:
+                   window_size: int = 10,
+                   enable_profiling: bool = False) -> xr.Dataset:
     """
     Calculate Kim and Nielsen's omega (ω) statistic for detecting hard sweeps.
     
@@ -610,6 +667,11 @@ def omega_statistic(ds: xr.Dataset,
     Returns:
         Dataset with omega statistic value
     """
+    if enable_profiling:
+        print(f"[DEBUG] Computing omega statistic...", flush=True)
+        import time
+        start_time = time.time()
+    
     genotypes = ds[call_genotype].values
     
     # Calculate omega statistic
@@ -618,5 +680,9 @@ def omega_statistic(ds: xr.Dataset,
     # Create result dataset
     result = ds.copy()
     result["omega_statistic"] = (["statistics"], np.array([omega_value]))
+    
+    if enable_profiling:
+        elapsed = time.time() - start_time
+        print(f"[Timing] Omega statistic calculation completed in {elapsed:.2f}s", flush=True)
     
     return result
