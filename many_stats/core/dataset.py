@@ -879,6 +879,10 @@ class GenomicDataset:
             print(f"[DEBUG] Input self.windowed_dataset shape: {dict(self.windowed_dataset.dims)}", flush=True)
             print(f"[DEBUG] Input result_dataset shape: {dict(result_dataset.dims)}", flush=True)
             
+            # Time each statistic
+            if self.enable_profiling:
+                stat_start = time.time()
+            
             if stat == 'tajima_d':
                 stat_ds = tajima_d(self.windowed_dataset)
                 print(f"[DEBUG] tajima_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
@@ -886,11 +890,19 @@ class GenomicDataset:
                 print(f"[DEBUG] result_dataset dimensions BEFORE merge: {dict(result_dataset.dims)}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
                 print(f"[DEBUG] result_dataset dimensions AFTER merge: {dict(result_dataset.dims)}", flush=True)
+                
+                # Print timing
+                if self.enable_profiling:
+                    elapsed = time.time() - stat_start
+                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
                 stat_ds = theta_pi(self.windowed_dataset)
                 print(f"[DEBUG] theta_pi computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
                 print(f"[DEBUG] After theta_pi merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
+                if self.enable_profiling:
+                    elapsed = time.time() - stat_start
+                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_w', 'watterson_theta']:
                 stat_ds = theta_w(self.windowed_dataset)
                 print(f"[DEBUG] theta_w computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
@@ -934,14 +946,23 @@ class GenomicDataset:
                     print(f"[DEBUG] WARNING: ld_d dimension mismatch! Input {len(self.windowed_dataset.windows)}, output {len(ld_ds.windows)}", flush=True)
                 result_dataset = result_dataset.merge(ld_ds)
                 print(f"[DEBUG] After ld_d merge: result_dataset has {len(result_dataset.windows)} windows", flush=True)
+                if self.enable_profiling:
+                    elapsed = time.time() - stat_start
+                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'ld_d_prime':
                 # Calculate D' values for each window
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
                 result_dataset = result_dataset.merge(ld_ds)
+                if self.enable_profiling:
+                    elapsed = time.time() - stat_start
+                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'ld_r_squared':
                 # Calculate r² values for each window
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
                 result_dataset = result_dataset.merge(ld_ds)
+                if self.enable_profiling:
+                    elapsed = time.time() - stat_start
+                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
         
         # Note: Callable sites are now handled by setting non-callable sites to -1
         # sgkit's statistics will automatically account for missing data
