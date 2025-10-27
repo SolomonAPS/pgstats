@@ -852,7 +852,19 @@ class GenomicDataset:
             raise ValueError("Windows not created. Call create_windows() first.")
         
         if stats is None:
-            stats = ['tajima_d', 'theta_pi', 'theta_w', 'theta_h']
+            stats = [
+                # SFS statistics
+                'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded',
+                'zeng_e', 'fay_wu_h',
+                # Theta estimators
+                'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+                # LD statistics
+                'ld_d', 'ld_dprime', 'ld_r_squared', 'omega_statistic',
+                # Haplotype statistics
+                'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
+                # Singleton counts
+                'singletons', 'singletons_unfolded'
+            ]
         
         # Start with a copy of windowed_dataset (may already be filtered by min_variants)
         result_dataset = self.windowed_dataset.copy()
@@ -1004,7 +1016,19 @@ class GenomicDataset:
             Dictionary with genome-wide statistics
         """
         if stats is None:
-            stats = ['tajima_d', 'theta_pi', 'theta_w', 'theta_h']
+            stats = [
+                # SFS statistics
+                'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded',
+                'zeng_e', 'fay_wu_h',
+                # Theta estimators
+                'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+                # LD statistics
+                'ld_d', 'ld_dprime', 'ld_r_squared', 'omega_statistic',
+                # Haplotype statistics
+                'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
+                # Singleton counts
+                'singletons', 'singletons_unfolded'
+            ]
         
         results = {}
         
