@@ -1589,7 +1589,19 @@ class GenomicDataset:
             raise ValueError("regions list cannot be empty")
         
         if stats is None:
-            stats = ['tajima_d', 'nucleotide_diversity', 'watterson_theta']
+            stats = [
+                # SFS statistics
+                'tajima_d', 'fu_li_d', 'fu_li_f', 'fu_li_d_unfolded', 'fu_li_f_unfolded',
+                'zeng_e', 'fay_wu_h',
+                # Theta estimators
+                'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+                # LD statistics
+                'ld_d', 'ld_dprime', 'ld_r_squared', 'omega_statistic',
+                # Haplotype statistics
+                'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
+                # Singleton counts
+                'singletons', 'singletons_unfolded'
+            ]
         
         if step_size is None:
             step_size = window_size
