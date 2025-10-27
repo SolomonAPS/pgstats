@@ -357,7 +357,15 @@ class GenomicDataset:
         contig_names = self.dataset.contig_id.values
         
         # Debug: Show chromosome names
-        vcf_chroms = set(contig_names.astype(str))
+        print(f"DEBUG: contig_id shape: {contig_names.shape}, values: {contig_names}", flush=True)
+        print(f"DEBUG: variant_contig indices: {contigs[:10]}", flush=True)
+        print(f"DEBUG: First 10 unique contig indices: {np.unique(contigs)[:10]}", flush=True)
+        
+        # Get actual chromosome names by indexing
+        unique_contigs = np.unique(contigs)
+        actual_contig_names = [str(contig_names[i]) for i in unique_contigs if i < len(contig_names)]
+        
+        vcf_chroms = set(actual_contig_names)
         bed_chroms = set(bed_df['chrom'].astype(str).unique())
         print(f"VCF chromosomes (first 5): {sorted(vcf_chroms)[:5]}", flush=True)
         print(f"BED chromosomes (first 5): {sorted(bed_chroms)[:5]}", flush=True)
