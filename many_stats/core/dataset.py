@@ -859,6 +859,7 @@ class GenomicDataset:
         for stat in stats:
             if stat == 'tajima_d':
                 stat_ds = tajima_d(self.windowed_dataset)
+                print(f"[DEBUG] tajima_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
                 stat_ds = theta_pi(self.windowed_dataset)
