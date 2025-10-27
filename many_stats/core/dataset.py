@@ -698,7 +698,8 @@ class GenomicDataset:
         # Check for boundary issues and warn user
         self._check_window_boundaries()
         
-        # Filter windows by minimum variants if specified
+        # DON'T filter windows here - do it after stats calculation to avoid dimension mismatches
+        # Filter windows by minimum variants if specified (store mask for later)
         if self.window_config.min_variants > 1:
             self._filter_windows_by_variants()
     
