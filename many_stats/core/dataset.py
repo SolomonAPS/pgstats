@@ -867,7 +867,10 @@ class GenomicDataset:
             if stat == 'tajima_d':
                 stat_ds = tajima_d(self.windowed_dataset)
                 print(f"[DEBUG] tajima_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
+                print(f"[DEBUG] stat_ds dimensions: {dict(stat_ds.dims)}", flush=True)
+                print(f"[DEBUG] result_dataset dimensions BEFORE merge: {dict(result_dataset.dims)}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"[DEBUG] result_dataset dimensions AFTER merge: {dict(result_dataset.dims)}", flush=True)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
                 stat_ds = theta_pi(self.windowed_dataset)
                 print(f"[DEBUG] theta_pi computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
