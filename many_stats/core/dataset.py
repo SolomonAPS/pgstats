@@ -855,6 +855,13 @@ class GenomicDataset:
         # Store the number of windows BEFORE filtering to track what will be removed
         n_windows_before_filtering = len(self.windowed_dataset.windows)
         
+        print(f"[DEBUG] Starting stats calculation with {n_windows_before_filtering} windows", flush=True)
+        print(f"[DEBUG] Input dataset dimensions: {list(self.windowed_dataset.dims.items())}", flush=True)
+        print(f"[DEBUG] Has window_filter_mask? {hasattr(self, 'window_filter_mask')}", flush=True)
+        if hasattr(self, 'window_filter_mask'):
+            n_to_keep = self.window_filter_mask.sum() if self.window_filter_mask is not None else 0
+            print(f"[DEBUG] window_filter_mask will keep {n_to_keep} of {len(self.window_filter_mask)} windows", flush=True)
+        
         # Calculate each statistic
         for stat in stats:
             if stat == 'tajima_d':
@@ -863,6 +870,7 @@ class GenomicDataset:
                 result_dataset = result_dataset.merge(stat_ds)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
                 stat_ds = theta_pi(self.windowed_dataset)
+                print(f"[DEBUG] theta_pi computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
             elif stat in ['theta_w', 'watterson_theta']:
                 stat_ds = theta_w(self.windowed_dataset)
@@ -915,8 +923,12 @@ class GenomicDataset:
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
         
         # Now filter out windows with too few variants (after stats are calculated)
+        print(f"[DEBUG] Before filtering: {len(result_dataset.windows)} windows in result_dataset", flush=True)
         if hasattr(self, 'window_filter_mask') and self.window_filter_mask is not None:
+            print(f"[DEBUG] Applying window_filter_mask to result_dataset...", flush=True)
+            print(f"[DEBUG] result_dataset dimensions before filter: {list(result_dataset.dims.items())}", flush=True)
             result_dataset = result_dataset.isel(windows=self.window_filter_mask)
+            print(f"[DEBUG] result_dataset dimensions after filter: {list(result_dataset.dims.items())}", flush=True)
             print(f"Filtered results to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
         
         # Print mean statistics
