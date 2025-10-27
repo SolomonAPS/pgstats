@@ -864,6 +864,10 @@ class GenomicDataset:
         
         # Calculate each statistic
         for stat in stats:
+            print(f"\n[DEBUG] Computing {stat}...", flush=True)
+            print(f"[DEBUG] Input self.windowed_dataset shape: {dict(self.windowed_dataset.dims)}", flush=True)
+            print(f"[DEBUG] Input result_dataset shape: {dict(result_dataset.dims)}", flush=True)
+            
             if stat == 'tajima_d':
                 stat_ds = tajima_d(self.windowed_dataset)
                 print(f"[DEBUG] tajima_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
