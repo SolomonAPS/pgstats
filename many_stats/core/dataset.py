@@ -782,7 +782,13 @@ class GenomicDataset:
             print("  Consider using smaller window sizes or checking variant density.")
     
     def _filter_windows_by_variants(self):
-        """Filter windows to only include those with minimum number of variants."""
+        """
+        Store information about windows that should be filtered.
+        
+        This method marks windows with too few variants rather than filtering
+        them immediately, allowing stats calculations to work correctly.
+        The actual filtering happens after stats are calculated.
+        """
         if self.windowed_dataset is None:
             return
         
@@ -792,14 +798,11 @@ class GenomicDataset:
         n_variants_per_window = window_stops - window_starts
         
         # Create filter mask
-        filter_mask = n_variants_per_window >= self.window_config.min_variants
+        self.window_filter_mask = n_variants_per_window >= self.window_config.min_variants
         
-        # Apply filter
-        self.windowed_dataset = self.windowed_dataset.isel(windows=filter_mask)
-        
-        n_filtered = np.sum(filter_mask)
-        n_removed = len(filter_mask) - n_filtered
-        print(f"Filtered to {n_filtered} windows (removed {n_removed} with <{self.window_config.min_variants} variants)")
+        n_filtered = np.sum(self.window_filter_mask)
+        n_removed = len(self.window_filter_mask) - n_filtered
+        print(f"Will filter to {n_filtered} windows (removing {n_removed} with <{self.window_config.min_variants} variants after stats calculation)")
     
     def _filter_to_region(self, start: int, end: int) -> xr.Dataset:
         """Filter dataset to a specific genomic region."""
@@ -837,8 +840,11 @@ class GenomicDataset:
         if stats is None:
             stats = ['tajima_d', 'theta_pi', 'theta_w', 'theta_h']
         
-        # Start with the windowed dataset
+        # Start with a copy of windowed_dataset (may already be filtered by min_variants)
         result_dataset = self.windowed_dataset.copy()
+        
+        # Store the number of windows BEFORE filtering to track what will be removed
+        n_windows_before_filtering = len(self.windowed_dataset.windows)
         
         # Calculate each statistic
         for stat in stats:
@@ -895,14 +901,13 @@ class GenomicDataset:
         # Note: Callable sites are now handled by setting non-callable sites to -1
         # sgkit's statistics will automatically account for missing data
         
-        # Store filter mask before normalization
-        if hasattr(self, 'windowed_dataset') and self.windowed_dataset is not None:
-            # Get the filter mask that was applied to create windowed_dataset
-            # This is needed to filter callable_sites_per_window to match filtered windows
-            pass  # The mask is already applied to windowed_dataset
-        
         # Normalize theta estimators by callable sites
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
+        
+        # Now filter out windows with too few variants (after stats are calculated)
+        if hasattr(self, 'window_filter_mask') and self.window_filter_mask is not None:
+            result_dataset = result_dataset.isel(windows=self.window_filter_mask)
+            print(f"Filtered results to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
         
         # Print mean statistics
         try:
