@@ -421,13 +421,29 @@ def calculate_windowed_ld(ds: xr.Dataset,
     # Get variant positions
     positions = ds.variant_position.values
     
+    if enable_profiling:
+        print(f"[DEBUG] Checking window configuration...", flush=True)
+        print(f"[DEBUG] Dataset dimensions: {dict(ds.sizes)}", flush=True)
+        print(f"[DEBUG] Dataset coordinates: {list(ds.coords)}", flush=True)
+        print(f"[DEBUG] Number of variants: {len(positions)}", flush=True)
+        print(f"[DEBUG] Position range: {np.min(positions)}-{np.max(positions)}", flush=True)
+    
     # Check if dataset already has windows defined
     if 'windows' in ds.dims and 'window_start' in ds.coords and 'window_stop' in ds.coords:
+        if enable_profiling:
+            print(f"[DEBUG] Using existing windows from dataset", flush=True)
+            print(f"[DEBUG] Number of existing windows: {len(ds.windows)}", flush=True)
+            print(f"[DEBUG] Window start range: {ds.window_start.values.min()}-{ds.window_start.values.max()}", flush=True)
+            print(f"[DEBUG] Window stop range: {ds.window_stop.values.min()}-{ds.window_stop.values.max()}", flush=True)
+        
         # Use existing windows
         window_starts = ds.window_start.values
         window_stops = ds.window_stop.values
         n_windows = len(ds.windows)
     else:
+        if enable_profiling:
+            print(f"[DEBUG] Creating new windows from scratch", flush=True)
+        
         # Create windows from scratch (old behavior for backward compatibility)
         min_pos = np.min(positions)
         max_pos = np.max(positions)
@@ -440,7 +456,14 @@ def calculate_windowed_ld(ds: xr.Dataset,
             window_starts.append(window_start)
             window_stops.append(window_end)
         
+        window_starts = np.array(window_starts)
+        window_stops = np.array(window_stops)
         n_windows = len(window_starts)
+        
+        if enable_profiling:
+            print(f"[DEBUG] Created {n_windows} windows", flush=True)
+            print(f"[DEBUG] Window start range: {window_starts.min()}-{window_starts.max()}", flush=True)
+            print(f"[DEBUG] Window stop range: {window_stops.min()}-{window_stops.max()}", flush=True)
     
     # Initialize arrays for all windows
     n_variants_per_window = np.zeros(n_windows, dtype=np.int32)
@@ -528,23 +551,44 @@ def calculate_windowed_ld(ds: xr.Dataset,
         n_valid = np.sum(~np.isnan(mean_D))
         print(f"[DEBUG] Processed {n_valid} windows with valid LD statistics", flush=True)
     
+    if enable_profiling:
+        print(f"[DEBUG] Creating LD result dataset...", flush=True)
+        print(f"[DEBUG] Input dataset windows dimension: {ds.sizes.get('windows', 'not found')}", flush=True)
+        print(f"[DEBUG] Number of windows to create: {n_windows}", flush=True)
+        print(f"[DEBUG] Number of windows with valid LD stats: {np.sum(~np.isnan(mean_D))}", flush=True)
+        print(f"[DEBUG] Window starts shape: {window_starts.shape}", flush=True)
+        print(f"[DEBUG] Window stops shape: {window_stops.shape}", flush=True)
+        print(f"[DEBUG] n_variants_per_window shape: {n_variants_per_window.shape}", flush=True)
+        print(f"[DEBUG] mean_D shape: {mean_D.shape}", flush=True)
+    
     # Create result dataset with same number of windows as input
     result = xr.Dataset()
     
     # Copy window coordinates from input if they exist
     if 'windows' in ds.dims:
+        if enable_profiling:
+            print(f"[DEBUG] Using existing window coordinates from input dataset", flush=True)
+            print(f"[DEBUG] Input windows coord shape: {ds.windows.shape}", flush=True)
+            print(f"[DEBUG] Input window_start coord shape: {ds.window_start.shape}", flush=True)
+            print(f"[DEBUG] Input window_stop coord shape: {ds.window_stop.shape}", flush=True)
+        
         result = result.assign_coords({
             'windows': ds.windows,
             'window_start': ds.window_start,
             'window_stop': ds.window_stop
         })
     else:
-        # Create new window coordinates
+        if enable_profiling:
+            print(f"[DEBUG] Creating new window coordinates", flush=True)
+        
         result = result.assign_coords({
             'windows': np.arange(n_windows),
             'window_start': ('windows', window_starts),
             'window_stop': ('windows', window_stops)
         })
+    
+    if enable_profiling:
+        print(f"[DEBUG] Result dataset windows dimension after coords: {result.sizes.get('windows', 'not found')}", flush=True)
     
     # Add data variables
     result = result.assign({
@@ -556,6 +600,11 @@ def calculate_windowed_ld(ds: xr.Dataset,
         'max_r_squared': (['windows'], max_r_squared),
         'mean_distance': (['windows'], mean_distance)
     })
+    
+    if enable_profiling:
+        print(f"[DEBUG] Final result dataset dimensions: {dict(result.sizes)}", flush=True)
+        print(f"[DEBUG] Final result dataset coords: {list(result.coords)}", flush=True)
+        print(f"[DEBUG] Final result dataset data vars: {list(result.data_vars)}", flush=True)
     
     return result
 
