@@ -420,18 +420,43 @@ def calculate_windowed_ld(ds: xr.Dataset,
     # Get variant positions
     positions = ds.variant_position.values
     
-    # Create windows
-    min_pos = np.min(positions)
-    max_pos = np.max(positions)
+    # Check if dataset already has windows defined
+    if 'windows' in ds.dims and 'window_start' in ds.coords and 'window_stop' in ds.coords:
+        # Use existing windows
+        window_starts = ds.window_start.values
+        window_stops = ds.window_stop.values
+        n_windows = len(ds.windows)
+    else:
+        # Create windows from scratch (old behavior for backward compatibility)
+        min_pos = np.min(positions)
+        max_pos = np.max(positions)
+        
+        window_starts = []
+        window_stops = []
+        
+        for window_start in range(min_pos, max_pos, window_size):
+            window_end = window_start + window_size
+            window_starts.append(window_start)
+            window_stops.append(window_end)
+        
+        n_windows = len(window_starts)
     
     window_results = []
     
-    for window_start in range(min_pos, max_pos, window_size):
-        window_end = window_start + window_size
-        
-        # Find variants in this window
-        in_window = (positions >= window_start) & (positions < window_end)
-        window_variants = np.where(in_window)[0]
+    for w_idx in range(n_windows):
+        if 'windows' in ds.dims:
+            # Using existing windows: window_start and window_stop are variant indices
+            start_idx = window_starts[w_idx]
+            stop_idx = window_stops[w_idx]
+            window_variants = np.arange(start_idx, stop_idx)
+        else:
+            # Creating new windows: window_start and window_stop are positions
+            window_start_pos = window_starts[w_idx]
+            window_end_pos = window_stops[w_idx]
+            
+            # Find variants in this window
+            in_window = (positions >= window_start_pos) & (positions < window_end_pos)
+            window_variants = np.where(in_window)[0]
         
         if len(window_variants) < 2:
             continue
@@ -464,9 +489,19 @@ def calculate_windowed_ld(ds: xr.Dataset,
             import pandas as pd
             window_df = pd.DataFrame(window_ld)
             
+            # Get window boundaries for output
+            if 'windows' in ds.dims:
+                # For existing windows, output actual genomic positions
+                window_start_out = positions[start_idx] if start_idx < len(positions) else 0
+                window_end_out = positions[stop_idx-1] if stop_idx > 0 and stop_idx-1 < len(positions) else 0
+            else:
+                # For new windows, use the position boundaries
+                window_start_out = window_start_pos
+                window_end_out = window_end_pos
+            
             window_results.append({
-                'window_start': window_start,
-                'window_end': window_end,
+                'window_start': window_start_out,
+                'window_end': window_end_out,
                 'n_variants': len(window_variants),
                 'n_pairs': len(window_ld),
                 'mean_D': window_df['D'].mean(),
