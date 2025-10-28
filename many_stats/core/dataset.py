@@ -1824,8 +1824,29 @@ class GenomicDataset:
                     use_callable_sites=use_callable_sites
                 )
                 
-                # Convert to DataFrame
-                region_df = region_stats.to_dataframe()
+                # Convert to DataFrame - only extract window-related variables
+                # Build dict of only the variables we need (avoid loading all variant/sample data)
+                region_data = {}
+                
+                # Add window coordinates
+                if 'window_start' in region_stats.coords:
+                    region_data['window_start'] = region_stats.window_start.values
+                if 'window_stop' in region_stats.coords:
+                    region_data['window_stop'] = region_stats.window_stop.values
+                if 'window_contig' in region_stats.coords:
+                    region_data['window_contig'] = region_stats.window_contig.values
+                
+                # Add window statistics only
+                for stat in stats:
+                    if stat in region_stats.data_vars:
+                        region_data[stat] = region_stats[stat].values
+                
+                # Add n_variants if present
+                if 'n_variants' in region_stats.data_vars:
+                    region_data['n_variants'] = region_stats.n_variants.values
+                
+                # Create DataFrame
+                region_df = pd.DataFrame(region_data)
                 
                 # Add region identifiers
                 region_df.insert(0, 'region_contig', contig)
