@@ -640,7 +640,15 @@ class GenomicDataset:
             # Genome-wide analysis
             print("Creating genome-wide window", flush=True)
             try:
+                # window_by_genome creates a single window per contig
+                # We need to ensure it handles contig boundaries correctly
                 self.windowed_dataset = sg.window_by_genome(self.dataset)
+                if self.enable_profiling:
+                    print(f"[DEBUG] Genome-wide window info:", flush=True)
+                    print(f"[DEBUG]   Windows: {len(self.windowed_dataset.windows)}", flush=True)
+                    print(f"[DEBUG]   Window contigs: {self.windowed_dataset.window_contig.values}", flush=True)
+                    print(f"[DEBUG]   Window starts: {self.windowed_dataset.window_start.values}", flush=True)
+                    print(f"[DEBUG]   Window stops: {self.windowed_dataset.window_stop.values}", flush=True)
             except Exception as e:
                 raise ValueError(f"Failed to create genome-wide window: {e}")
         else:
@@ -669,21 +677,37 @@ class GenomicDataset:
                     raise ValueError(f"No variants found in region {start}-{end}")
                 
                 try:
+                    # Use window_by_position for base pair windows
+                    # Could also use window_by_variant for variant count windows
                     self.windowed_dataset = sg.window_by_position(
                         region_dataset,
                         size=window_size or 1000,
                         step=step_size or window_size or 1000
                     )
+                    if self.enable_profiling:
+                        print(f"[DEBUG] Region window info:", flush=True)
+                        print(f"[DEBUG]   Windows: {len(self.windowed_dataset.windows)}", flush=True)
+                        print(f"[DEBUG]   Window contigs: {self.windowed_dataset.window_contig.values[:5]}... (first 5)", flush=True)
+                        print(f"[DEBUG]   Window starts: {self.windowed_dataset.window_start.values[:5]}... (first 5)", flush=True)
+                        print(f"[DEBUG]   Window stops: {self.windowed_dataset.window_stop.values[:5]}... (first 5)", flush=True)
                 except Exception as e:
                     raise ValueError(f"Failed to create windows for region {start}-{end}: {e}")
             else:
                 print(f"Creating position-based windows with size {window_size}", flush=True)
                 try:
+                    # Use window_by_position for base pair windows
+                    # Could also use window_by_variant for variant count windows
                     self.windowed_dataset = sg.window_by_position(
                         self.dataset,
                         size=window_size,
                         step=step_size
                     )
+                    if self.enable_profiling:
+                        print(f"[DEBUG] Position-based window info:", flush=True)
+                        print(f"[DEBUG]   Windows: {len(self.windowed_dataset.windows)}", flush=True)
+                        print(f"[DEBUG]   Window contigs: {self.windowed_dataset.window_contig.values[:5]}... (first 5)", flush=True)
+                        print(f"[DEBUG]   Window starts: {self.windowed_dataset.window_start.values[:5]}... (first 5)", flush=True)
+                        print(f"[DEBUG]   Window stops: {self.windowed_dataset.window_stop.values[:5]}... (first 5)", flush=True)
                 except Exception as e:
                     raise ValueError(f"Failed to create position-based windows: {e}")
         
@@ -695,21 +719,41 @@ class GenomicDataset:
         n_windows = len(self.windowed_dataset.windows)
         print(f"Created {n_windows} windows", flush=True)
         
-        # Ensure window coordinates are properly set
+        # Set up window coordinates properly
         if self.enable_profiling:
             print(f"[DEBUG] Setting up window coordinates...", flush=True)
-            print(f"[DEBUG] Before: coords={list(self.windowed_dataset.coords)}", flush=True)
+            print(f"[DEBUG] Before:", flush=True)
+            print(f"[DEBUG]   coords={list(self.windowed_dataset.coords)}", flush=True)
+            print(f"[DEBUG]   dims={dict(self.windowed_dataset.dims)}", flush=True)
+            print(f"[DEBUG]   data_vars={list(self.windowed_dataset.data_vars)}", flush=True)
         
-        # Always ensure window coordinates are properly set
+        # Get window information from sgkit output
+        window_starts = self.windowed_dataset.window_start.values
+        window_stops = self.windowed_dataset.window_stop.values
+        window_contigs = self.windowed_dataset.window_contig.values
+        
+        # Get actual positions for each window
+        positions = self.dataset.variant_position.values
+        window_start_positions = positions[window_starts]
+        window_stop_positions = positions[window_stops - 1]  # -1 because stop is exclusive
+        
+        # Set up proper window coordinates
         self.windowed_dataset = self.windowed_dataset.assign_coords({
             'windows': np.arange(n_windows),
-            'window_start': ('windows', self.windowed_dataset.window_start),
-            'window_stop': ('windows', self.windowed_dataset.window_stop)
+            'window_start': ('windows', window_start_positions),  # Use actual positions
+            'window_stop': ('windows', window_stop_positions),
+            'window_contig': ('windows', window_contigs)
         })
         
+        # Add window indices as data variables for LD calculation
+        self.windowed_dataset['window_start_idx'] = ('windows', window_starts)
+        self.windowed_dataset['window_stop_idx'] = ('windows', window_stops)
+        
         if self.enable_profiling:
-            print(f"[DEBUG] After: coords={list(self.windowed_dataset.coords)}", flush=True)
-            print(f"[DEBUG] Window dimensions: {dict(self.windowed_dataset.dims)}", flush=True)
+            print(f"[DEBUG] After:", flush=True)
+            print(f"[DEBUG]   coords={list(self.windowed_dataset.coords)}", flush=True)
+            print(f"[DEBUG]   dims={dict(self.windowed_dataset.dims)}", flush=True)
+            print(f"[DEBUG]   data_vars={list(self.windowed_dataset.data_vars)}", flush=True)
         
         # Check for boundary issues and warn user
         self._check_window_boundaries()
