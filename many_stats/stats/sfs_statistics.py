@@ -1248,56 +1248,81 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         result[stat_name] = (["variants"], np.zeros(n_variants))
         return result
     
-    # Calculate harmonic numbers once using max_n
-    a1 = calculate_a1(max_n)
-    a2 = calculate_a2(max_n)
-    u_f_star, v_f_star = calculate_v_f_star(max_n, a1, a2)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    # Calculate Fu and Li's F or F* for each variant
-    fu_li_f_values = np.zeros(n_variants)
+    # Calculate Fu and Li's F or F* for each window
+    fu_li_f_values = np.zeros(n_windows)
     
-    for i in range(n_variants):
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate max sample size for this window
+        window_max_n = 0
+        for i in range(len(window_variant_matrix)):
+            site_n = 0
+            for j in range(n_samples):
+                if window_variant_matrix[i, j] != -1:
+                    site_n += 1
+            if site_n > window_max_n:
+                window_max_n = site_n
+        
+        if window_max_n <= 1:
+            fu_li_f_values[w_idx] = 0.0
+            continue
+        
+        # Calculate harmonic numbers for this window
+        a1 = calculate_a1(window_max_n)
+        a2 = calculate_a2(window_max_n)
+        u_f_star, v_f_star = calculate_v_f_star(window_max_n, a1, a2)
+        
+        # Get SFS for entire window
         if folded:
             # Use folded SFS (F*)
-            sfs, n_max = get_folded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_folded_sfs(window_variant_matrix)
             singleton_count = sfs[0] if len(sfs) > 0 else 0
         else:
             # Use unfolded SFS (F)
-            sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_unfolded_sfs(window_variant_matrix)
             singleton_count = sfs[0] if len(sfs) > 0 else 0
             
         S = calculate_S(sfs)
         
         if S == 0:
-            fu_li_f_values[i] = 0.0
+            fu_li_f_values[w_idx] = 0.0
             continue
             
-        pi = calculate_pi(variant_matrix[i:i+1, :])
+        # Calculate θπ for entire window
+        pi = calculate_pi(window_variant_matrix)
         
         # Calculate numerator: π - singleton estimator
-        # Note: Using max_n for scaling factor to maintain consistency
         if folded:
             # F*: π - ((n-1)/n)η₁
-            numerator = pi - ((max_n - 1) / max_n) * singleton_count
+            numerator = pi - ((window_max_n - 1) / window_max_n) * singleton_count
         else:
             # F: π - ζ₁
             numerator = pi - singleton_count
         
-        # Calculate variance using max_n harmonic numbers
+        # Calculate variance using window harmonic numbers
         var = u_f_star * S + v_f_star * S * (S - 1)
         
         if var <= 0:
             if S == 1:
-                fu_li_f_values[i] = numerator / np.sqrt(abs(u_f_star))
+                fu_li_f_values[w_idx] = numerator / np.sqrt(abs(u_f_star))
             else:
-                fu_li_f_values[i] = 0.0
+                fu_li_f_values[w_idx] = 0.0
         else:
-            fu_li_f_values[i] = numerator / np.sqrt(var)
+            fu_li_f_values[w_idx] = numerator / np.sqrt(var)
     
     # Create output dataset
     result = ds.copy()
     stat_name = "fu_li_f" if not folded else "fu_li_f_star"
-    result[stat_name] = (["variants"], fu_li_f_values)
+    result[stat_name] = (["windows"], fu_li_f_values)
     
     return result
 
@@ -1414,39 +1439,70 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     term2 -= 2.0 * (max_n * b2 - max_n + 1.0) / ((max_n - 1.0) * a1)
     term2 -= (3.0 * max_n + 1.0) / (max_n - 1.0)
     
-    # Calculate Zeng's E for each variant
-    zeng_e_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
-        # Get unfolded SFS for this variant
-        sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
+    # Calculate Zeng's E for each window
+    zeng_e_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate max sample size for this window
+        window_max_n = 0
+        for i in range(len(window_variant_matrix)):
+            site_n = 0
+            for j in range(n_samples):
+                if window_variant_matrix[i, j] != -1:
+                    site_n += 1
+            if site_n > window_max_n:
+                window_max_n = site_n
+        
+        if window_max_n <= 1:
+            zeng_e_values[w_idx] = 0.0
+            continue
+        
+        # Calculate harmonic numbers for this window
+        a1 = calculate_a1(window_max_n)
+        b2 = calculate_b2(window_max_n)
+        
+        # Pre-calculate variance components using window_max_n
+        term1 = (window_max_n / (2.0 * (window_max_n - 1.0))) - (1.0 / a1)
+        term2 = b2 + 2.0 * (window_max_n / (window_max_n - 1.0)) ** 2 * b2
+        term2 -= 2.0 * (window_max_n * b2 - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
+        term2 -= (3.0 * window_max_n + 1.0) / (window_max_n - 1.0)
+        
+        # Get unfolded SFS for entire window
+        sfs, n_max = get_unfolded_sfs(window_variant_matrix)
         S = calculate_S(sfs)
         
         if S == 0:
-            zeng_e_values[i] = 0.0
+            zeng_e_values[w_idx] = 0.0
             continue
         
-        # Calculate theta_L and theta_w (theta_S)
-        theta_l_val = calculate_theta_l_per_site(variant_matrix[i:i+1, :])
-        theta_w_val = calculate_theta_w_per_site(variant_matrix[i:i+1, :])
+        # Calculate theta_L and theta_w for entire window
+        theta_l_val = calculate_theta_l_per_site(window_variant_matrix)
+        theta_w_val = calculate_theta_w_per_site(window_variant_matrix)
         
-        # Calculate variance of E according to equation 9.28c
-        # σ²(E) = [n/(2(n-1)) - 1/a_n]θ + [b_n + 2(n/(n-1))² * b_n - 2(nbn-n+1)/((n-1)a_n) - 3n+1/(n-1)]θ²
-        # Using max_n for variance components and theta_w as estimate
-        
+        # Calculate variance of E
         var_e = term1 * theta_w_val + term2 * theta_w_val * theta_w_val
         
         if var_e <= 0:
             if S == 1:
-                zeng_e_values[i] = (theta_l_val - theta_w_val) / np.sqrt(abs(term1))
+                zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(abs(term1))
             else:
-                zeng_e_values[i] = 0.0
+                zeng_e_values[w_idx] = 0.0
         else:
-            zeng_e_values[i] = (theta_l_val - theta_w_val) / np.sqrt(var_e)
+            zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(var_e)
     
     # Create output dataset
     result = ds.copy()
-    result["zeng_e"] = (["variants"], zeng_e_values)
+    result["zeng_e"] = (["windows"], zeng_e_values)
     
     return result
 
@@ -1500,27 +1556,37 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
 
-    # Calculate singletons for each variant
-    singleton_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
+    # Calculate singletons for each window
+    singleton_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
         if folded:
-            # Use folded SFS (η₁)
-            sfs, n = get_folded_sfs(variant_matrix[i:i+1, :])
+            # Use folded SFS (η₁) for entire window
+            sfs, n = get_folded_sfs(window_variant_matrix)
             singleton_count = sfs[0] if len(sfs) > 0 else 0
         else:
-            # Use unfolded SFS (ζ₁)
-            sfs, n = get_unfolded_sfs(variant_matrix[i:i+1, :])
+            # Use unfolded SFS (ζ₁) for entire window
+            sfs, n = get_unfolded_sfs(window_variant_matrix)
             singleton_count = sfs[0] if len(sfs) > 0 else 0
             
-        singleton_values[i] = singleton_count
+        singleton_values[w_idx] = singleton_count
     
     # Create output dataset
     result = ds.copy()
     if folded:
-        result["singletons_folded"] = (["variants"], singleton_values)
+        result["singletons_folded"] = (["windows"], singleton_values)
     else:
-        result["singletons_unfolded"] = (["variants"], singleton_values)
+        result["singletons_unfolded"] = (["windows"], singleton_values)
     
     return result
 
@@ -1594,35 +1660,64 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     a2 = calculate_a2(max_n)
     u_h, v_h = calculate_v_h(max_n, a1, a2)
     
-    # Calculate Fay and Wu's H for each variant
-    fay_wu_h_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
-        # Get SFS for this variant
-        sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
+    # Calculate Fay and Wu's H for each window
+    fay_wu_h_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate max sample size for this window
+        window_max_n = 0
+        for i in range(len(window_variant_matrix)):
+            site_n = 0
+            for j in range(n_samples):
+                if window_variant_matrix[i, j] != -1:
+                    site_n += 1
+            if site_n > window_max_n:
+                window_max_n = site_n
+        
+        if window_max_n <= 1:
+            fay_wu_h_values[w_idx] = 0.0
+            continue
+        
+        # Calculate harmonic numbers for this window
+        a1 = calculate_a1(window_max_n)
+        a2 = calculate_a2(window_max_n)
+        u_h, v_h = calculate_v_h(window_max_n, a1, a2)
+        
+        # Get SFS for entire window
+        sfs, n_max = get_unfolded_sfs(window_variant_matrix)
         S = calculate_S(sfs)
         
         if S == 0:
-            fay_wu_h_values[i] = 0.0
+            fay_wu_h_values[w_idx] = 0.0
             continue
             
-        pi = calculate_pi(variant_matrix[i:i+1, :])
-        theta_h_val = calculate_theta_h_per_site(variant_matrix[i:i+1, :])
+        pi = calculate_pi(window_variant_matrix)
+        theta_h_val = calculate_theta_h_per_site(window_variant_matrix)
         
-        # Calculate variance using max_n harmonic numbers
+        # Calculate variance using window harmonic numbers
         var_h = u_h * S + v_h * S * (S - 1)
         
         if var_h <= 0:
             if S == 1:
-                fay_wu_h_values[i] = (pi - theta_h_val) / np.sqrt(abs(u_h))
+                fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(abs(u_h))
             else:
-                fay_wu_h_values[i] = 0.0
+                fay_wu_h_values[w_idx] = 0.0
         else:
-            fay_wu_h_values[i] = (pi - theta_h_val) / np.sqrt(var_h)
+            fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(var_h)
     
     # Create output dataset
     result = ds.copy()
-    result["fay_wu_h"] = (["variants"], fay_wu_h_values)
+    result["fay_wu_h"] = (["windows"], fay_wu_h_values)
     
     return result
 
