@@ -546,47 +546,59 @@ def calculate_windowed_ld(ds: xr.Dataset,
     # Create result dataset with same number of windows as input
     result = xr.Dataset()
     
-    # Copy window coordinates from input if they exist
-    if 'windows' in ds.dims:
-        if enable_profiling:
-            print(f"[DEBUG] Using existing window coordinates from input dataset", flush=True)
-            print(f"[DEBUG] Input windows coord shape: {ds.windows.shape}", flush=True)
-            print(f"[DEBUG] Input window_start coord shape: {ds.window_start.shape}", flush=True)
-            print(f"[DEBUG] Input window_stop coord shape: {ds.window_stop.shape}", flush=True)
-        
-        result = result.assign_coords({
-            'windows': ds.windows,
-            'window_start': ds.window_start,
-            'window_stop': ds.window_stop
-        })
-    else:
-        if enable_profiling:
-            print(f"[DEBUG] Creating new window coordinates", flush=True)
-        
-        result = result.assign_coords({
-            'windows': np.arange(n_windows),
-            'window_start': ('windows', window_starts),
-            'window_stop': ('windows', window_stops)
-        })
-    
     if enable_profiling:
-        print(f"[DEBUG] Result dataset windows dimension after coords: {result.sizes.get('windows', 'not found')}", flush=True)
+        print(f"[DEBUG] Creating LD result dataset...", flush=True)
+        print(f"[DEBUG] Input dataset:", flush=True)
+        print(f"[DEBUG]   Dimensions: {dict(ds.sizes)}", flush=True)
+        print(f"[DEBUG]   Coordinates: {list(ds.coords)}", flush=True)
+        print(f"[DEBUG]   Data vars: {list(ds.data_vars)}", flush=True)
+        print(f"[DEBUG] LD statistics:", flush=True)
+        print(f"[DEBUG]   n_variants shape: {n_variants_per_window.shape}", flush=True)
+        print(f"[DEBUG]   mean_D shape: {mean_D.shape}", flush=True)
+        print(f"[DEBUG]   mean_D_prime shape: {mean_D_prime.shape}", flush=True)
+        print(f"[DEBUG]   mean_r_squared shape: {mean_r_squared.shape}", flush=True)
+        print(f"[DEBUG]   max_r_squared shape: {max_r_squared.shape}", flush=True)
+        print(f"[DEBUG]   mean_distance shape: {mean_distance.shape}", flush=True)
     
-    # Add data variables
-    result = result.assign({
-        'n_variants': (['windows'], n_variants_per_window),
-        'n_pairs': (['windows'], n_pairs_per_window),
-        'mean_D': (['windows'], mean_D),
-        'mean_D_prime': (['windows'], mean_D_prime),
-        'mean_r_squared': (['windows'], mean_r_squared),
-        'max_r_squared': (['windows'], max_r_squared),
-        'mean_distance': (['windows'], mean_distance)
+    # Copy variant coordinates from input
+    if enable_profiling:
+        print(f"[DEBUG] Using variant coordinates from input dataset", flush=True)
+        print(f"[DEBUG]   variants shape: {ds.variants.shape}", flush=True)
+        print(f"[DEBUG]   variant_position shape: {ds.variant_position.shape}", flush=True)
+    
+    result = result.assign_coords({
+        'variants': ds.variants,
+        'variant_position': ds.variant_position
     })
     
     if enable_profiling:
-        print(f"[DEBUG] Final result dataset dimensions: {dict(result.sizes)}", flush=True)
-        print(f"[DEBUG] Final result dataset coords: {list(result.coords)}", flush=True)
-        print(f"[DEBUG] Final result dataset data vars: {list(result.data_vars)}", flush=True)
+        print(f"[DEBUG] Result dataset after coords:", flush=True)
+        print(f"[DEBUG]   Dimensions: {dict(result.sizes)}", flush=True)
+        print(f"[DEBUG]   Coordinates: {list(result.coords)}", flush=True)
+    
+    # Add data variables
+    result = result.assign({
+        'n_variants': (['variants'], n_variants_per_window),
+        'n_pairs': (['variants'], n_pairs_per_window),
+        'mean_D': (['variants'], mean_D),
+        'mean_D_prime': (['variants'], mean_D_prime),
+        'mean_r_squared': (['variants'], mean_r_squared),
+        'max_r_squared': (['variants'], max_r_squared),
+        'mean_distance': (['variants'], mean_distance)
+    })
+    
+    if enable_profiling:
+        print(f"[DEBUG] Final result dataset:", flush=True)
+        print(f"[DEBUG]   Dimensions: {dict(result.sizes)}", flush=True)
+        print(f"[DEBUG]   Coordinates: {list(result.coords)}", flush=True)
+        print(f"[DEBUG]   Data vars: {list(result.data_vars)}", flush=True)
+        print(f"[DEBUG]   n_variants range: {result.n_variants.values.min()}-{result.n_variants.values.max()}", flush=True)
+        print(f"[DEBUG]   n_pairs range: {result.n_pairs.values.min()}-{result.n_pairs.values.max()}", flush=True)
+        print(f"[DEBUG]   mean_D range: {np.nanmin(result.mean_D.values)}-{np.nanmax(result.mean_D.values)}", flush=True)
+        print(f"[DEBUG]   mean_D_prime range: {np.nanmin(result.mean_D_prime.values)}-{np.nanmax(result.mean_D_prime.values)}", flush=True)
+        print(f"[DEBUG]   mean_r_squared range: {np.nanmin(result.mean_r_squared.values)}-{np.nanmax(result.mean_r_squared.values)}", flush=True)
+        print(f"[DEBUG]   max_r_squared range: {np.nanmin(result.max_r_squared.values)}-{np.nanmax(result.max_r_squared.values)}", flush=True)
+        print(f"[DEBUG]   mean_distance range: {np.nanmin(result.mean_distance.values)}-{np.nanmax(result.mean_distance.values)}", flush=True)
     
     return result
 
