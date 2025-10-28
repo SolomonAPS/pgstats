@@ -399,18 +399,17 @@ def calculate_ld_matrix(ds: xr.Dataset,
 
 def calculate_windowed_ld(ds: xr.Dataset,
                          call_genotype: str = "call_genotype",
-                         window_size: int = 1000,
                          enable_profiling: bool = False) -> xr.Dataset:
     """
-    Calculate LD statistics within windows.
+    Calculate LD statistics within existing windows.
     
     Args:
-        ds: sgkit Dataset containing genotype calls
+        ds: sgkit Dataset containing genotype calls and windows
         call_genotype: Name of the genotype variable
-        window_size: Size of windows for LD calculation
+        enable_profiling: Whether to print timing and debug info
         
     Returns:
-        Dataset with windowed LD statistics
+        Dataset with LD statistics for each window
     """
     genotypes = ds[call_genotype].values
     n_variants, n_samples, ploidy = genotypes.shape
@@ -418,33 +417,37 @@ def calculate_windowed_ld(ds: xr.Dataset,
     # Convert to dosage format
     dosage = genotypes.sum(axis=2)
     
-    # Get variant positions
+    # Get variant positions and window information
     positions = ds.variant_position.values
     
     if enable_profiling:
-        print(f"[DEBUG] Checking window configuration...", flush=True)
+        print(f"[DEBUG] Checking dataset...", flush=True)
         print(f"[DEBUG] Dataset dimensions: {dict(ds.sizes)}", flush=True)
         print(f"[DEBUG] Dataset coordinates: {list(ds.coords)}", flush=True)
+        print(f"[DEBUG] Dataset data vars: {list(ds.data_vars)}", flush=True)
         print(f"[DEBUG] Number of variants: {len(positions)}", flush=True)
         print(f"[DEBUG] Position range: {np.min(positions)}-{np.max(positions)}", flush=True)
     
-    # Always use existing windows if available
-    if 'windows' in ds.dims and 'window_start' in ds.coords and 'window_stop' in ds.coords:
-        if enable_profiling:
-            print(f"[DEBUG] Using existing windows from dataset", flush=True)
-            print(f"[DEBUG] Number of existing windows: {len(ds.windows)}", flush=True)
-            print(f"[DEBUG] Window start range: {ds.window_start.values.min()}-{ds.window_start.values.max()}", flush=True)
-            print(f"[DEBUG] Window stop range: {ds.window_stop.values.min()}-{ds.window_stop.values.max()}", flush=True)
-        
-        # Use existing windows
-        window_starts = ds.window_start.values
-        window_stops = ds.window_stop.values
-        n_windows = len(ds.windows)
-        
-        if enable_profiling:
-            print(f"[DEBUG] Using {n_windows} existing windows", flush=True)
-    else:
-        raise ValueError("Input dataset must have windows defined. Call create_windows() first.")
+    # Verify windows exist
+    required_vars = ['windows', 'window_start_idx', 'window_stop_idx']
+    missing_vars = [var for var in required_vars if var not in ds.dims and var not in ds.data_vars]
+    if missing_vars:
+        raise ValueError(f"Input dataset missing required window variables: {missing_vars}. Call create_windows() first.")
+    
+    # Get window indices
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
+    n_windows = len(ds.windows)
+    
+    if enable_profiling:
+        print(f"[DEBUG] Using {n_windows} windows", flush=True)
+        print(f"[DEBUG] Window start indices: {window_starts[:5]}... (first 5)", flush=True)
+        print(f"[DEBUG] Window stop indices: {window_stops[:5]}... (first 5)", flush=True)
+        print(f"[DEBUG] Window positions:", flush=True)
+        for i in range(min(5, n_windows)):
+            start_pos = positions[window_starts[i]]
+            stop_pos = positions[window_stops[i]-1]  # -1 because stop is exclusive
+            print(f"[DEBUG]   Window {i}: {start_pos}-{stop_pos} (indices {window_starts[i]}-{window_stops[i]})", flush=True)
     
     # Initialize arrays for all windows
     n_variants_per_window = np.zeros(n_windows, dtype=np.int32)
@@ -468,9 +471,8 @@ def calculate_windowed_ld(ds: xr.Dataset,
         if enable_profiling:
             print(f"[DEBUG] Window {w_idx}: start_pos={window_start_pos}, end_pos={window_end_pos}", flush=True)
         
-        # Find variants in this window using positions
-        in_window = (positions >= window_start_pos) & (positions < window_end_pos)
-        window_variants = np.where(in_window)[0]
+        # Get variants in this window using indices
+        window_variants = np.arange(window_starts[w_idx], window_stops[w_idx])
         
         if enable_profiling:
             print(f"[DEBUG] Window {w_idx}: found {len(window_variants)} variants", flush=True)
