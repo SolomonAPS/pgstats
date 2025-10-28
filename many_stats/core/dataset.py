@@ -956,6 +956,17 @@ class GenomicDataset:
                 if not hasattr(self, '_cached_ld_stats'):
                     if self.enable_profiling:
                         print(f"[DEBUG] Computing LD statistics for all windows...", flush=True)
+                        print(f"[DEBUG] Input dataset coords: {list(self.windowed_dataset.coords)}", flush=True)
+                        print(f"[DEBUG] Input dataset dims: {dict(self.windowed_dataset.dims)}", flush=True)
+                    
+                    # Ensure window coordinates are properly set
+                    if 'windows' not in self.windowed_dataset.dims:
+                        print(f"[DEBUG] Adding window coordinates...", flush=True)
+                        self.windowed_dataset = self.windowed_dataset.assign_coords({
+                            'windows': np.arange(len(self.windowed_dataset.window_start)),
+                            'window_start': ('windows', self.windowed_dataset.window_start),
+                            'window_stop': ('windows', self.windowed_dataset.window_stop)
+                        })
                     
                     # Calculate all LD statistics at once
                     self._cached_ld_stats = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
