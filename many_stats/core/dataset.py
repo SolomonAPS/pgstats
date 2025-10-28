@@ -638,7 +638,6 @@ class GenomicDataset:
                 # window_by_genome creates a single window per contig
                 # We need to ensure it handles contig boundaries correctly
                 self.windowed_dataset = sg.window_by_genome(self.dataset)
-                if self.enable_profiling:
             except Exception as e:
                 raise ValueError(f"Failed to create genome-wide window: {e}")
         else:
@@ -674,7 +673,6 @@ class GenomicDataset:
                         size=window_size or 1000,
                         step=step_size or window_size or 1000
                     )
-                    if self.enable_profiling:
                 except Exception as e:
                     raise ValueError(f"Failed to create windows for region {start}-{end}: {e}")
             else:
@@ -687,7 +685,6 @@ class GenomicDataset:
                         size=window_size,
                         step=step_size
                     )
-                    if self.enable_profiling:
                 except Exception as e:
                     raise ValueError(f"Failed to create position-based windows: {e}")
         
@@ -700,7 +697,6 @@ class GenomicDataset:
         print(f"Created {n_windows} windows", flush=True)
         
         # Set up window coordinates properly
-        if self.enable_profiling:
         
         # Get window information from sgkit output
         window_starts = self.windowed_dataset.window_start.values
@@ -730,7 +726,6 @@ class GenomicDataset:
         self.windowed_dataset['window_start_idx'] = ('windows', window_starts)
         self.windowed_dataset['window_stop_idx'] = ('windows', window_stops)
         
-        if self.enable_profiling:
         
         # Check for boundary issues and warn user
         self._check_window_boundaries()
@@ -972,7 +967,6 @@ class GenomicDataset:
             elif stat in ['ld_d', 'ld_d_prime', 'ld_r_squared']:
                 # Only calculate LD once per window
                 if not hasattr(self, '_cached_ld_stats'):
-                    if self.enable_profiling:
                     
                     # Ensure window coordinates are properly set
                     if 'windows' not in self.windowed_dataset.dims:
@@ -987,6 +981,7 @@ class GenomicDataset:
                     
                     if self.enable_profiling:
                         if len(self._cached_ld_stats.windows) != len(self.windowed_dataset.windows):
+                            pass
                 
                 # Map stat name to LD dataset variable
                 ld_var_map = {
@@ -1021,7 +1016,6 @@ class GenomicDataset:
             print(f"Filtered to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
         
         # Filter out windows where LD statistics failed to calculate
-        if self.enable_profiling:
         
         # Check LD statistics that should have valid values if calculation succeeded
         ld_stats = {
@@ -1035,7 +1029,6 @@ class GenomicDataset:
         # Check each LD statistic
         for var, description in ld_stats.items():
             if var in result_dataset.data_vars:
-                if self.enable_profiling:
                 
                 # Convert to float array to handle NaN checks
                 values = result_dataset[var].values.astype(float)
