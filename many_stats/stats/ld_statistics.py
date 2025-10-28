@@ -428,7 +428,7 @@ def calculate_windowed_ld(ds: xr.Dataset,
         print(f"[DEBUG] Number of variants: {len(positions)}", flush=True)
         print(f"[DEBUG] Position range: {np.min(positions)}-{np.max(positions)}", flush=True)
     
-    # Check if dataset already has windows defined
+    # Always use existing windows if available
     if 'windows' in ds.dims and 'window_start' in ds.coords and 'window_stop' in ds.coords:
         if enable_profiling:
             print(f"[DEBUG] Using existing windows from dataset", flush=True)
@@ -440,30 +440,11 @@ def calculate_windowed_ld(ds: xr.Dataset,
         window_starts = ds.window_start.values
         window_stops = ds.window_stop.values
         n_windows = len(ds.windows)
+        
+        if enable_profiling:
+            print(f"[DEBUG] Using {n_windows} existing windows", flush=True)
     else:
-        if enable_profiling:
-            print(f"[DEBUG] Creating new windows from scratch", flush=True)
-        
-        # Create windows from scratch (old behavior for backward compatibility)
-        min_pos = np.min(positions)
-        max_pos = np.max(positions)
-        
-        window_starts = []
-        window_stops = []
-        
-        for window_start in range(min_pos, max_pos, window_size):
-            window_end = window_start + window_size
-            window_starts.append(window_start)
-            window_stops.append(window_end)
-        
-        window_starts = np.array(window_starts)
-        window_stops = np.array(window_stops)
-        n_windows = len(window_starts)
-        
-        if enable_profiling:
-            print(f"[DEBUG] Created {n_windows} windows", flush=True)
-            print(f"[DEBUG] Window start range: {window_starts.min()}-{window_starts.max()}", flush=True)
-            print(f"[DEBUG] Window stop range: {window_stops.min()}-{window_stops.max()}", flush=True)
+        raise ValueError("Input dataset must have windows defined. Call create_windows() first.")
     
     # Initialize arrays for all windows
     n_variants_per_window = np.zeros(n_windows, dtype=np.int32)
