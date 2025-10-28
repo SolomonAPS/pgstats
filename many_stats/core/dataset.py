@@ -1074,42 +1074,58 @@ class GenomicDataset:
             print(f"[DEBUG] result_dataset dimensions after min_variants filter: {list(result_dataset.dims.items())}", flush=True)
             print(f"Filtered to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
         
-        # Then filter out windows with invalid stats
+        # Filter out windows where LD statistics failed to calculate
         if self.enable_profiling:
-            print(f"[DEBUG] Checking for invalid stats...", flush=True)
+            print(f"[DEBUG] Checking for windows with failed LD calculations...", flush=True)
             print(f"[DEBUG] Data variables: {list(result_dataset.data_vars)}", flush=True)
         
-        # Only check numeric variables that should have valid values
-        numeric_vars = ['mean_D', 'mean_D_prime', 'mean_r_squared', 'max_r_squared']
+        # Check LD statistics that should have valid values if calculation succeeded
+        ld_stats = {
+            'mean_D': 'average D (linkage disequilibrium)',
+            'mean_D_prime': "average D' (standardized D)",
+            'mean_r_squared': 'average r² (squared correlation)',
+            'max_r_squared': 'maximum r² in window'
+        }
         valid_stats = []
         
-        for var in numeric_vars:
+        # Check each LD statistic
+        for var, description in ld_stats.items():
             if var in result_dataset.data_vars:
                 if self.enable_profiling:
-                    print(f"[DEBUG] Checking {var}...", flush=True)
+                    print(f"[DEBUG] Checking {var} ({description})...", flush=True)
                     print(f"[DEBUG]   Shape: {result_dataset[var].shape}", flush=True)
                     print(f"[DEBUG]   Type: {result_dataset[var].dtype}", flush=True)
                 
                 # Convert to float array to handle NaN checks
                 values = result_dataset[var].values.astype(float)
-                valid = ~np.isnan(values)
+                valid = ~np.isnan(values)  # True if LD calculation succeeded
                 valid_stats.append(valid)
                 
                 if self.enable_profiling:
-                    print(f"[DEBUG]   Valid values: {np.sum(valid)}/{len(valid)}", flush=True)
+                    n_valid = np.sum(valid)
+                    n_failed = len(valid) - n_valid
+                    print(f"[DEBUG]   {n_valid} windows with valid {var}", flush=True)
+                    print(f"[DEBUG]   {n_failed} windows where {var} failed to calculate", flush=True)
+                    if n_failed > 0:
+                        print(f"[DEBUG]   Common reasons for failure:", flush=True)
+                        print(f"[DEBUG]     - All variants are monomorphic (no variation)", flush=True)
+                        print(f"[DEBUG]     - Too many samples have missing data", flush=True)
+                        print(f"[DEBUG]     - Not enough variant pairs to calculate LD", flush=True)
         
         if valid_stats:
-            # Window is valid if any statistic is valid
+            # Window is valid if any LD statistic was calculated successfully
             valid_windows = np.any(valid_stats, axis=0)
             n_valid = np.sum(valid_windows)
+            n_failed = len(valid_windows) - n_valid
             
-            print(f"[DEBUG] Applying valid stats filter...", flush=True)
-            print(f"[DEBUG] Found {n_valid} windows with valid statistics", flush=True)
-            print(f"[DEBUG] result_dataset dimensions before valid stats filter: {list(result_dataset.dims.items())}", flush=True)
+            print(f"[DEBUG] Filtering out windows with failed LD calculations...", flush=True)
+            print(f"[DEBUG] Found {n_valid} windows with valid LD statistics", flush=True)
+            print(f"[DEBUG] Found {n_failed} windows where all LD calculations failed", flush=True)
+            print(f"[DEBUG] result_dataset dimensions before filter: {list(result_dataset.dims.items())}", flush=True)
             
             result_dataset = result_dataset.isel(windows=valid_windows)
-            print(f"[DEBUG] result_dataset dimensions after valid stats filter: {list(result_dataset.dims.items())}", flush=True)
-            print(f"Filtered to {len(result_dataset.windows)} windows with valid statistics", flush=True)
+            print(f"[DEBUG] result_dataset dimensions after filter: {list(result_dataset.dims.items())}", flush=True)
+            print(f"Filtered to {len(result_dataset.windows)} windows with valid LD statistics", flush=True)
         
         # Print mean statistics
         try:
