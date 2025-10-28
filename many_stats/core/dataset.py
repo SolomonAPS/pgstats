@@ -1039,6 +1039,7 @@ class GenomicDataset:
                     n_valid = np.sum(valid)
                     n_failed = len(valid) - n_valid
                     if n_failed > 0:
+                        pass
         
         if valid_stats:
             # Window is valid if any LD statistic was calculated successfully
