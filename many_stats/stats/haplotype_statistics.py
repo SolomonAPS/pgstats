@@ -320,15 +320,22 @@ def haplotype_diversity(ds: xr.Dataset,
     # Estimate haplotypes assuming phased data (sgkit approach)
     haplotypes = estimate_haplotypes_from_phased_data(genotypes)
     
-    # Calculate haplotype diversity for each variant
-    diversity_values = []
-    for var_idx in range(n_variants):
-        diversity = calculate_haplotype_diversity(haplotypes[var_idx:var_idx+1, :])
-        diversity_values.append(diversity)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
+    
+    # Calculate haplotype diversity for each window
+    diversity_values = np.zeros(n_windows)
+    for w_idx in range(n_windows):
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_haplotypes = haplotypes[window_start:window_stop, :]
+        diversity_values[w_idx] = calculate_haplotype_diversity(window_haplotypes)
     
     # Create result dataset
     result = ds.copy()
-    result["haplotype_diversity"] = (["variants"], np.array(diversity_values))
+    result["haplotype_diversity"] = (["windows"], diversity_values)
     
     return result
 
@@ -365,26 +372,34 @@ def garud_h_statistics(ds: xr.Dataset,
     # Estimate haplotypes assuming phased data (sgkit approach)
     haplotypes = estimate_haplotypes_from_phased_data(genotypes)
     
-    # Calculate Garud H statistics for each variant
-    h1_values = []
-    h12_values = []
-    h123_values = []
-    h2_h1_values = []
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for var_idx in range(n_variants):
-        stats = calculate_garud_h_statistics(haplotypes[var_idx:var_idx+1, :], 
+    # Calculate Garud H statistics for each window
+    h1_values = np.zeros(n_windows)
+    h12_values = np.zeros(n_windows)
+    h123_values = np.zeros(n_windows)
+    h2_h1_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_haplotypes = haplotypes[window_start:window_stop, :]
+        stats = calculate_garud_h_statistics(window_haplotypes, 
                                            ignore_missing, max_missing, missing_is_percentage)
-        h1_values.append(stats[0])
-        h12_values.append(stats[1])
-        h123_values.append(stats[2])
-        h2_h1_values.append(stats[3])
+        h1_values[w_idx] = stats[0]
+        h12_values[w_idx] = stats[1]
+        h123_values[w_idx] = stats[2]
+        h2_h1_values[w_idx] = stats[3]
     
     # Create result dataset
     result = ds.copy()
-    result["garud_h1"] = (["variants"], np.array(h1_values))
-    result["garud_h12"] = (["variants"], np.array(h12_values))
-    result["garud_h123"] = (["variants"], np.array(h123_values))
-    result["garud_h2_h1"] = (["variants"], np.array(h2_h1_values))
+    result["garud_h1"] = (["windows"], h1_values)
+    result["garud_h12"] = (["windows"], h12_values)
+    result["garud_h123"] = (["windows"], h123_values)
+    result["garud_h2_h1"] = (["windows"], h2_h1_values)
     
     return result
 
