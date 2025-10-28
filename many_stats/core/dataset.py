@@ -1063,14 +1063,36 @@ class GenomicDataset:
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
         print(f"[DEBUG] After normalize - result_dataset has {len(result_dataset.windows)} windows", flush=True)
         
-        # Now filter out windows with too few variants (after stats are calculated)
+        # Now filter out windows with too few variants and invalid stats
         print(f"[DEBUG] Before filtering: {len(result_dataset.windows)} windows in result_dataset", flush=True)
+        
+        # First filter by minimum variants if specified
         if hasattr(self, 'window_filter_mask') and self.window_filter_mask is not None:
-            print(f"[DEBUG] Applying window_filter_mask to result_dataset...", flush=True)
-            print(f"[DEBUG] result_dataset dimensions before filter: {list(result_dataset.dims.items())}", flush=True)
+            print(f"[DEBUG] Applying min_variants filter...", flush=True)
+            print(f"[DEBUG] result_dataset dimensions before min_variants filter: {list(result_dataset.dims.items())}", flush=True)
             result_dataset = result_dataset.isel(windows=self.window_filter_mask)
-            print(f"[DEBUG] result_dataset dimensions after filter: {list(result_dataset.dims.items())}", flush=True)
-            print(f"Filtered results to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
+            print(f"[DEBUG] result_dataset dimensions after min_variants filter: {list(result_dataset.dims.items())}", flush=True)
+            print(f"Filtered to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
+        
+        # Then filter out windows with invalid stats
+        valid_stats = []
+        for var in result_dataset.data_vars:
+            if var not in ['n_variants', 'n_pairs']:  # Skip count variables
+                values = result_dataset[var].values
+                valid_stats.append(~np.isnan(values))
+        
+        if valid_stats:
+            # Window is valid if any statistic is valid
+            valid_windows = np.any(valid_stats, axis=0)
+            n_valid = np.sum(valid_windows)
+            
+            print(f"[DEBUG] Applying valid stats filter...", flush=True)
+            print(f"[DEBUG] Found {n_valid} windows with valid statistics", flush=True)
+            print(f"[DEBUG] result_dataset dimensions before valid stats filter: {list(result_dataset.dims.items())}", flush=True)
+            
+            result_dataset = result_dataset.isel(windows=valid_windows)
+            print(f"[DEBUG] result_dataset dimensions after valid stats filter: {list(result_dataset.dims.items())}", flush=True)
+            print(f"Filtered to {len(result_dataset.windows)} windows with valid statistics", flush=True)
         
         # Print mean statistics
         try:
@@ -1591,29 +1613,56 @@ class GenomicDataset:
         
         return summary
     
-    def _print_statistic_means(self, results_df: pd.DataFrame, stats: List[str], analysis_type: str = "analysis"):
+    def _print_statistic_means(self, result_dataset: xr.Dataset, stats: List[str], analysis_type: str = "analysis"):
         """
         Calculate and print mean values for all statistics.
         
         Args:
-            results_df: DataFrame with calculated statistics
+            result_dataset: Dataset with calculated statistics
             stats: List of statistic names to calculate means for
             analysis_type: Description of the analysis type for output
         """
         print(f"\nMean Statistics ({analysis_type}):")
         print("=" * 50)
         
+        # Map stat names to dataset variables
+        stat_map = {
+            'tajima_d': 'tajima_d',
+            'fu_li_d': 'fu_li_d_star',
+            'fu_li_f': 'fu_li_f_star',
+            'fu_li_d_unfolded': 'fu_li_d',
+            'fu_li_f_unfolded': 'fu_li_f',
+            'zeng_e': 'zeng_e',
+            'fay_wu_h': 'fay_wu_h',
+            'theta_pi': 'theta_pi',
+            'theta_w': 'theta_w',
+            'theta_h': 'theta_h',
+            'theta_l': 'theta_l',
+            'ld_d': 'mean_D',
+            'ld_d_prime': 'mean_D_prime',
+            'ld_r_squared': 'mean_r_squared',
+            'omega_statistic': 'omega_statistic',
+            'haplotype_diversity': 'haplotype_diversity',
+            'garud_h1': 'garud_h1',
+            'garud_h12': 'garud_h12',
+            'garud_h123': 'garud_h123',
+            'garud_h2_h1': 'garud_h2_h1'
+        }
+        
         for stat in stats:
-            if stat in results_df.columns:
+            var_name = stat_map.get(stat)
+            if var_name in result_dataset:
                 # Calculate mean, excluding NaN values
-                mean_val = results_df[stat].mean()
-                n_windows = len(results_df[stat].dropna())
-                total_windows = len(results_df)
+                values = result_dataset[var_name].values
+                valid_mask = ~np.isnan(values)
+                n_windows = np.sum(valid_mask)
+                total_windows = len(values)
                 
-                if pd.isna(mean_val):
-                    print(f"  {stat:20s}: No valid values")
-                else:
+                if n_windows > 0:
+                    mean_val = np.mean(values[valid_mask])
                     print(f"  {stat:20s}: {mean_val:.6f} (n={n_windows}/{total_windows} windows)")
+                else:
+                    print(f"  {stat:20s}: No valid values")
             else:
                 print(f"  {stat:20s}: Not calculated")
         
