@@ -730,7 +730,13 @@ class GenomicDataset:
         # Get window information from sgkit output
         window_starts = self.windowed_dataset.window_start.values
         window_stops = self.windowed_dataset.window_stop.values
-        window_contigs = self.windowed_dataset.window_contig.values
+        
+        # Handle window_contig (may not exist for single-contig datasets)
+        if 'window_contig' in self.windowed_dataset.data_vars or 'window_contig' in self.windowed_dataset.coords:
+            window_contigs = self.windowed_dataset.window_contig.values
+        else:
+            # Single contig - use contig 0 for all windows
+            window_contigs = np.zeros(n_windows, dtype=int)
         
         # Get actual positions for each window
         positions = self.dataset.variant_position.values
@@ -781,10 +787,10 @@ class GenomicDataset:
         contig_lengths = self.dataset.contig_length.values
         contig_ids = self.dataset.contig_id.values
         
-        # Get window information
+        # Get window information (use indices, not positions)
         window_contigs = self.windowed_dataset.window_contig.values
-        window_starts = self.windowed_dataset.window_start.values
-        window_stops = self.windowed_dataset.window_stop.values
+        window_starts = self.windowed_dataset.window_start_idx.values
+        window_stops = self.windowed_dataset.window_stop_idx.values
         
         # Check each window
         boundary_warnings = []
@@ -862,9 +868,9 @@ class GenomicDataset:
         if self.windowed_dataset is None:
             return
         
-        # Count variants per window
-        window_starts = self.windowed_dataset.window_start.values
-        window_stops = self.windowed_dataset.window_stop.values
+        # Count variants per window (use indices, not positions)
+        window_starts = self.windowed_dataset.window_start_idx.values
+        window_stops = self.windowed_dataset.window_stop_idx.values
         n_variants_per_window = window_stops - window_starts
         
         # Create filter mask
@@ -929,21 +935,15 @@ class GenomicDataset:
         # Start with a copy of windowed_dataset (may already be filtered by min_variants)
         result_dataset = self.windowed_dataset.copy()
         
-        # Add n_variants per window (window_stops - window_starts)
-        window_starts = self.windowed_dataset.window_start.values
-        window_stops = self.windowed_dataset.window_stop.values
+        # Add n_variants per window (use indices, not positions)
+        window_starts = self.windowed_dataset.window_start_idx.values
+        window_stops = self.windowed_dataset.window_stop_idx.values
         n_variants_per_window = window_stops - window_starts
         result_dataset['n_variants'] = (['windows'], n_variants_per_window)
         
         # Store the number of windows BEFORE filtering to track what will be removed
         n_windows_before_filtering = len(self.windowed_dataset.windows)
         
-        print(f"[DEBUG] Starting stats calculation with {n_windows_before_filtering} windows", flush=True)
-        print(f"[DEBUG] Input dataset dimensions: {list(self.windowed_dataset.dims.items())}", flush=True)
-        print(f"[DEBUG] Has window_filter_mask? {hasattr(self, 'window_filter_mask')}", flush=True)
-        if hasattr(self, 'window_filter_mask'):
-            n_to_keep = self.window_filter_mask.sum() if self.window_filter_mask is not None else 0
-            print(f"[DEBUG] window_filter_mask will keep {n_to_keep} of {len(self.window_filter_mask)} windows", flush=True)
         
         # Calculate each statistic
         for stat in stats:

@@ -560,31 +560,38 @@ def calculate_windowed_ld(ds: xr.Dataset,
         print(f"[DEBUG]   max_r_squared shape: {max_r_squared.shape}", flush=True)
         print(f"[DEBUG]   mean_distance shape: {mean_distance.shape}", flush=True)
     
-    # Copy variant coordinates from input
+    # Copy window coordinates from input
     if enable_profiling:
-        print(f"[DEBUG] Using variant coordinates from input dataset", flush=True)
-        print(f"[DEBUG]   variants shape: {ds.variants.shape}", flush=True)
-        print(f"[DEBUG]   variant_position shape: {ds.variant_position.shape}", flush=True)
+        print(f"[DEBUG] Using window coordinates from input dataset", flush=True)
+        print(f"[DEBUG]   windows shape: {ds.windows.shape}", flush=True)
+        print(f"[DEBUG]   window_contig shape: {ds.window_contig.shape}", flush=True)
     
     result = result.assign_coords({
-        'variants': ds.variants,
-        'variant_position': ds.variant_position
+        'windows': ds.windows
     })
+    
+    # Add window information as data variables if they exist
+    if 'window_contig' in ds.data_vars or 'window_contig' in ds.coords:
+        result = result.assign({'window_contig': ds.window_contig})
+    if 'window_start' in ds.data_vars or 'window_start' in ds.coords:
+        result = result.assign({'window_start': ds.window_start})
+    if 'window_stop' in ds.data_vars or 'window_stop' in ds.coords:
+        result = result.assign({'window_stop': ds.window_stop})
     
     if enable_profiling:
         print(f"[DEBUG] Result dataset after coords:", flush=True)
         print(f"[DEBUG]   Dimensions: {dict(result.sizes)}", flush=True)
         print(f"[DEBUG]   Coordinates: {list(result.coords)}", flush=True)
     
-    # Add data variables
+    # Add data variables with WINDOWS dimension
     result = result.assign({
-        'n_variants': (['variants'], n_variants_per_window),
-        'n_pairs': (['variants'], n_pairs_per_window),
-        'mean_D': (['variants'], mean_D),
-        'mean_D_prime': (['variants'], mean_D_prime),
-        'mean_r_squared': (['variants'], mean_r_squared),
-        'max_r_squared': (['variants'], max_r_squared),
-        'mean_distance': (['variants'], mean_distance)
+        'n_variants': (['windows'], n_variants_per_window),
+        'n_pairs': (['windows'], n_pairs_per_window),
+        'mean_D': (['windows'], mean_D),
+        'mean_D_prime': (['windows'], mean_D_prime),
+        'mean_r_squared': (['windows'], mean_r_squared),
+        'max_r_squared': (['windows'], max_r_squared),
+        'mean_distance': (['windows'], mean_distance)
     })
     
     if enable_profiling:

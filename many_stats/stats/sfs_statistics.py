@@ -681,15 +681,26 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
-    # Calculate θπ for each variant using calculate_pi
-    pi_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
-        pi_values[i] = calculate_pi(variant_matrix[i:i+1, :])
+    # Calculate θπ for each window
+    pi_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate θπ for the entire window
+        pi_values[w_idx] = calculate_pi(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
-    result["theta_pi"] = (["variants"], pi_values)
+    result["theta_pi"] = (["windows"], pi_values)
     
     return result
 
@@ -733,15 +744,26 @@ def theta_w(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
-    # Calculate θw for each variant
-    theta_w_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
-        theta_w_values[i] = calculate_theta_w_per_site(variant_matrix[i:i+1, :])
+    # Calculate θw for each window
+    theta_w_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate θw for the entire window
+        theta_w_values[w_idx] = calculate_theta_w_per_site(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
-    result["theta_w"] = (["variants"], theta_w_values)
+    result["theta_w"] = (["windows"], theta_w_values)
     
     return result
 
@@ -787,15 +809,26 @@ def theta_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
-    # Calculate θh for each variant
-    theta_h_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
-        theta_h_values[i] = calculate_theta_h_per_site(variant_matrix[i:i+1, :])
+    # Calculate θh for each window
+    theta_h_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate θh for the entire window
+        theta_h_values[w_idx] = calculate_theta_h_per_site(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
-    result["theta_h"] = (["variants"], theta_h_values)
+    result["theta_h"] = (["windows"], theta_h_values)
     
     return result
 
@@ -841,15 +874,26 @@ def theta_l(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
-    # Calculate θL for each variant
-    theta_l_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
-        theta_l_values[i] = calculate_theta_l_per_site(variant_matrix[i:i+1, :])
+    # Calculate θL for each window
+    theta_l_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate θL for the entire window
+        theta_l_values[w_idx] = calculate_theta_l_per_site(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
-    result["theta_l"] = (["variants"], theta_l_values)
+    result["theta_l"] = (["windows"], theta_l_values)
     
     return result
 
@@ -911,53 +955,61 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
                 # Convert to binary (0 or 1)
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
-    # Calculate max sample size across all variants (following scikit-allel/sgkit)
-    max_n = 0
-    for i in range(n_variants):
-        site_n = 0
-        for j in range(n_samples):
-            if variant_matrix[i, j] != -1:
-                site_n += 1
-        if site_n > max_n:
-            max_n = site_n
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    if max_n <= 1:
-        # No valid data, return zeros
-        result = ds.copy()
-        result["tajima_d"] = (["variants"], np.zeros(n_variants))
-        return result
+    # Calculate Tajima's D for each window
+    tajima_d_values = np.zeros(n_windows)
     
-    # Calculate harmonic numbers once using max_n
-    a1 = calculate_a1(max_n)
-    a2 = calculate_a2(max_n)
-    c1 = calculate_c1(max_n, a1)
-    c2 = calculate_c2(max_n, a1, a2)
-    
-    # Calculate Tajima's D for each variant
-    tajima_d_values = np.zeros(n_variants)
-    
-    for i in range(n_variants):
-        # Get SFS for this variant
-        sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate max sample size for this window
+        window_max_n = 0
+        for i in range(len(window_variant_matrix)):
+            site_n = 0
+            for j in range(n_samples):
+                if window_variant_matrix[i, j] != -1:
+                    site_n += 1
+            if site_n > window_max_n:
+                window_max_n = site_n
+        
+        if window_max_n <= 1:
+            tajima_d_values[w_idx] = 0.0
+            continue
+        
+        # Calculate harmonic numbers for this window
+        a1 = calculate_a1(window_max_n)
+        a2 = calculate_a2(window_max_n)
+        c1 = calculate_c1(window_max_n, a1)
+        c2 = calculate_c2(window_max_n, a1, a2)
+        
+        # Get SFS for entire window
+        sfs, n_max = get_unfolded_sfs(window_variant_matrix)
         S = calculate_S(sfs)
         
         if S == 0:
-            tajima_d_values[i] = 0.0
+            tajima_d_values[w_idx] = 0.0
             continue
-            
-        pi = calculate_pi(variant_matrix[i:i+1, :])
         
-        # Calculate variance using max_n harmonic numbers
+        pi = calculate_pi(window_variant_matrix)
+        
+        # Calculate variance using window_max_n
         var = c1 * S + c2 * S * (S - 1)
         
         if var <= 0:
-            tajima_d_values[i] = 0.0
+            tajima_d_values[w_idx] = 0.0
         else:
-            tajima_d_values[i] = (pi - S / a1) / np.sqrt(var)
+            tajima_d_values[w_idx] = (pi - S / a1) / np.sqrt(var)
     
     # Create output dataset
     result = ds.copy()
-    result["tajima_d"] = (["variants"], tajima_d_values)
+    result["tajima_d"] = (["windows"], tajima_d_values)
     
     return result
 
