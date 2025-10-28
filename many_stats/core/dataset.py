@@ -356,11 +356,6 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
-        # Debug: Show chromosome names
-        print(f"DEBUG: contig_id shape: {contig_names.shape}, values: {contig_names}", flush=True)
-        print(f"DEBUG: variant_contig indices: {contigs[:10]}", flush=True)
-        print(f"DEBUG: First 10 unique contig indices: {np.unique(contigs)[:10]}", flush=True)
-        
         # Get actual chromosome names by indexing
         unique_contigs = np.unique(contigs)
         actual_contig_names = [str(contig_names[i]) for i in unique_contigs if i < len(contig_names)]
@@ -644,11 +639,6 @@ class GenomicDataset:
                 # We need to ensure it handles contig boundaries correctly
                 self.windowed_dataset = sg.window_by_genome(self.dataset)
                 if self.enable_profiling:
-                    print(f"[DEBUG] Genome-wide window info:", flush=True)
-                    print(f"[DEBUG]   Windows: {len(self.windowed_dataset.windows)}", flush=True)
-                    print(f"[DEBUG]   Window contigs: {self.windowed_dataset.window_contig.values}", flush=True)
-                    print(f"[DEBUG]   Window starts: {self.windowed_dataset.window_start.values}", flush=True)
-                    print(f"[DEBUG]   Window stops: {self.windowed_dataset.window_stop.values}", flush=True)
             except Exception as e:
                 raise ValueError(f"Failed to create genome-wide window: {e}")
         else:
@@ -685,11 +675,6 @@ class GenomicDataset:
                         step=step_size or window_size or 1000
                     )
                     if self.enable_profiling:
-                        print(f"[DEBUG] Region window info:", flush=True)
-                        print(f"[DEBUG]   Windows: {len(self.windowed_dataset.windows)}", flush=True)
-                        print(f"[DEBUG]   Window contigs: {self.windowed_dataset.window_contig.values[:5]}... (first 5)", flush=True)
-                        print(f"[DEBUG]   Window starts: {self.windowed_dataset.window_start.values[:5]}... (first 5)", flush=True)
-                        print(f"[DEBUG]   Window stops: {self.windowed_dataset.window_stop.values[:5]}... (first 5)", flush=True)
                 except Exception as e:
                     raise ValueError(f"Failed to create windows for region {start}-{end}: {e}")
             else:
@@ -703,11 +688,6 @@ class GenomicDataset:
                         step=step_size
                     )
                     if self.enable_profiling:
-                        print(f"[DEBUG] Position-based window info:", flush=True)
-                        print(f"[DEBUG]   Windows: {len(self.windowed_dataset.windows)}", flush=True)
-                        print(f"[DEBUG]   Window contigs: {self.windowed_dataset.window_contig.values[:5]}... (first 5)", flush=True)
-                        print(f"[DEBUG]   Window starts: {self.windowed_dataset.window_start.values[:5]}... (first 5)", flush=True)
-                        print(f"[DEBUG]   Window stops: {self.windowed_dataset.window_stop.values[:5]}... (first 5)", flush=True)
                 except Exception as e:
                     raise ValueError(f"Failed to create position-based windows: {e}")
         
@@ -721,11 +701,6 @@ class GenomicDataset:
         
         # Set up window coordinates properly
         if self.enable_profiling:
-            print(f"[DEBUG] Setting up window coordinates...", flush=True)
-            print(f"[DEBUG] Before:", flush=True)
-            print(f"[DEBUG]   coords={list(self.windowed_dataset.coords)}", flush=True)
-            print(f"[DEBUG]   dims={dict(self.windowed_dataset.dims)}", flush=True)
-            print(f"[DEBUG]   data_vars={list(self.windowed_dataset.data_vars)}", flush=True)
         
         # Get window information from sgkit output
         window_starts = self.windowed_dataset.window_start.values
@@ -756,10 +731,6 @@ class GenomicDataset:
         self.windowed_dataset['window_stop_idx'] = ('windows', window_stops)
         
         if self.enable_profiling:
-            print(f"[DEBUG] After:", flush=True)
-            print(f"[DEBUG]   coords={list(self.windowed_dataset.coords)}", flush=True)
-            print(f"[DEBUG]   dims={dict(self.windowed_dataset.dims)}", flush=True)
-            print(f"[DEBUG]   data_vars={list(self.windowed_dataset.data_vars)}", flush=True)
         
         # Check for boundary issues and warn user
         self._check_window_boundaries()
@@ -947,9 +918,6 @@ class GenomicDataset:
         
         # Calculate each statistic
         for stat in stats:
-            print(f"\n[DEBUG] Computing {stat}...", flush=True)
-            print(f"[DEBUG] Input self.windowed_dataset shape: {dict(self.windowed_dataset.sizes)}", flush=True)
-            print(f"[DEBUG] Input result_dataset shape: {dict(result_dataset.sizes)}", flush=True)
             
             # Time each statistic
             if self.enable_profiling:
@@ -957,11 +925,7 @@ class GenomicDataset:
             
             if stat == 'tajima_d':
                 stat_ds = tajima_d(self.windowed_dataset)
-                print(f"[DEBUG] tajima_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
-                print(f"[DEBUG] stat_ds dimensions: {dict(stat_ds.dims)}", flush=True)
-                print(f"[DEBUG] result_dataset dimensions BEFORE merge: {dict(result_dataset.dims)}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
-                print(f"[DEBUG] result_dataset dimensions AFTER merge: {dict(result_dataset.dims)}", flush=True)
                 
                 # Print timing
                 if self.enable_profiling:
@@ -969,22 +933,16 @@ class GenomicDataset:
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
                 stat_ds = theta_pi(self.windowed_dataset)
-                print(f"[DEBUG] theta_pi computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
-                print(f"[DEBUG] After theta_pi merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_w', 'watterson_theta']:
                 stat_ds = theta_w(self.windowed_dataset)
-                print(f"[DEBUG] theta_w computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
-                print(f"[DEBUG] After merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
             elif stat in ['theta_h', 'fay_wu_theta']:
                 stat_ds = theta_h(self.windowed_dataset)
-                print(f"[DEBUG] theta_h computed: {len(self.windowed_dataset.windows)} windows in input, {len(stat_ds.windows)} windows in output", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
-                print(f"[DEBUG] After merge: result_dataset now has {len(result_dataset.windows)} windows", flush=True)
             elif stat == 'theta_l':
                 stat_ds = theta_l(self.windowed_dataset)
                 result_dataset = result_dataset.merge(stat_ds)
@@ -1015,13 +973,9 @@ class GenomicDataset:
                 # Only calculate LD once per window
                 if not hasattr(self, '_cached_ld_stats'):
                     if self.enable_profiling:
-                        print(f"[DEBUG] Computing LD statistics for all windows...", flush=True)
-                        print(f"[DEBUG] Input dataset coords: {list(self.windowed_dataset.coords)}", flush=True)
-                        print(f"[DEBUG] Input dataset dims: {dict(self.windowed_dataset.dims)}", flush=True)
                     
                     # Ensure window coordinates are properly set
                     if 'windows' not in self.windowed_dataset.dims:
-                        print(f"[DEBUG] Adding window coordinates...", flush=True)
                         self.windowed_dataset = self.windowed_dataset.assign_coords({
                             'windows': np.arange(len(self.windowed_dataset.window_start)),
                             'window_start': ('windows', self.windowed_dataset.window_start),
@@ -1032,9 +986,7 @@ class GenomicDataset:
                     self._cached_ld_stats = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
                     
                     if self.enable_profiling:
-                        print(f"[DEBUG] LD stats computed: {len(self.windowed_dataset.windows)} windows in input, {len(self._cached_ld_stats.windows)} windows in output", flush=True)
                         if len(self._cached_ld_stats.windows) != len(self.windowed_dataset.windows):
-                            print(f"[DEBUG] WARNING: LD dimension mismatch! Input {len(self.windowed_dataset.windows)}, output {len(self._cached_ld_stats.windows)}", flush=True)
                 
                 # Map stat name to LD dataset variable
                 ld_var_map = {
@@ -1058,26 +1010,18 @@ class GenomicDataset:
         # sgkit's statistics will automatically account for missing data
         
         # Normalize theta estimators by callable sites
-        print(f"[DEBUG] About to normalize - result_dataset has {len(result_dataset.windows)} windows", flush=True)
         result_dataset_before_norm = result_dataset.copy()
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
-        print(f"[DEBUG] After normalize - result_dataset has {len(result_dataset.windows)} windows", flush=True)
         
         # Now filter out windows with too few variants and invalid stats
-        print(f"[DEBUG] Before filtering: {len(result_dataset.windows)} windows in result_dataset", flush=True)
         
         # First filter by minimum variants if specified
         if hasattr(self, 'window_filter_mask') and self.window_filter_mask is not None:
-            print(f"[DEBUG] Applying min_variants filter...", flush=True)
-            print(f"[DEBUG] result_dataset dimensions before min_variants filter: {list(result_dataset.dims.items())}", flush=True)
             result_dataset = result_dataset.isel(windows=self.window_filter_mask)
-            print(f"[DEBUG] result_dataset dimensions after min_variants filter: {list(result_dataset.dims.items())}", flush=True)
             print(f"Filtered to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
         
         # Filter out windows where LD statistics failed to calculate
         if self.enable_profiling:
-            print(f"[DEBUG] Checking for windows with failed LD calculations...", flush=True)
-            print(f"[DEBUG] Data variables: {list(result_dataset.data_vars)}", flush=True)
         
         # Check LD statistics that should have valid values if calculation succeeded
         ld_stats = {
@@ -1092,9 +1036,6 @@ class GenomicDataset:
         for var, description in ld_stats.items():
             if var in result_dataset.data_vars:
                 if self.enable_profiling:
-                    print(f"[DEBUG] Checking {var} ({description})...", flush=True)
-                    print(f"[DEBUG]   Shape: {result_dataset[var].shape}", flush=True)
-                    print(f"[DEBUG]   Type: {result_dataset[var].dtype}", flush=True)
                 
                 # Convert to float array to handle NaN checks
                 values = result_dataset[var].values.astype(float)
@@ -1104,13 +1045,7 @@ class GenomicDataset:
                 if self.enable_profiling:
                     n_valid = np.sum(valid)
                     n_failed = len(valid) - n_valid
-                    print(f"[DEBUG]   {n_valid} windows with valid {var}", flush=True)
-                    print(f"[DEBUG]   {n_failed} windows where {var} failed to calculate", flush=True)
                     if n_failed > 0:
-                        print(f"[DEBUG]   Common reasons for failure:", flush=True)
-                        print(f"[DEBUG]     - All variants are monomorphic (no variation)", flush=True)
-                        print(f"[DEBUG]     - Too many samples have missing data", flush=True)
-                        print(f"[DEBUG]     - Not enough variant pairs to calculate LD", flush=True)
         
         if valid_stats:
             # Window is valid if any LD statistic was calculated successfully
@@ -1118,13 +1053,8 @@ class GenomicDataset:
             n_valid = np.sum(valid_windows)
             n_failed = len(valid_windows) - n_valid
             
-            print(f"[DEBUG] Filtering out windows with failed LD calculations...", flush=True)
-            print(f"[DEBUG] Found {n_valid} windows with valid LD statistics", flush=True)
-            print(f"[DEBUG] Found {n_failed} windows where all LD calculations failed", flush=True)
-            print(f"[DEBUG] result_dataset dimensions before filter: {list(result_dataset.dims.items())}", flush=True)
             
             result_dataset = result_dataset.isel(windows=valid_windows)
-            print(f"[DEBUG] result_dataset dimensions after filter: {list(result_dataset.dims.items())}", flush=True)
             print(f"Filtered to {len(result_dataset.windows)} windows with valid LD statistics", flush=True)
         
         # Print mean statistics
