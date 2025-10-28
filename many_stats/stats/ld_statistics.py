@@ -481,27 +481,21 @@ def calculate_windowed_ld(ds: xr.Dataset,
         start_time = time.time()
     
     for w_idx in range(n_windows):
-        if 'windows' in ds.dims:
-            # Using existing windows: window_start and window_stop are variant indices
-            window_start_idx = window_starts[w_idx]
-            window_stop_idx = window_stops[w_idx]
-            
-            if enable_profiling:
-                print(f"[DEBUG] Window {w_idx}: start_idx={window_start_idx}, stop_idx={window_stop_idx}", flush=True)
-            
-            # Get variants in this window directly from indices
-            window_variants = np.arange(window_start_idx, window_stop_idx)
-        else:
-            # Creating new windows: window_start and window_stop are positions
-            window_start_pos = window_starts[w_idx]
-            window_end_pos = window_stops[w_idx]
-            
-            if enable_profiling:
-                print(f"[DEBUG] Window {w_idx}: start_pos={window_start_pos}, end_pos={window_end_pos}", flush=True)
-            
-            # Find variants in this window using positions
-            in_window = (positions >= window_start_pos) & (positions < window_end_pos)
-            window_variants = np.where(in_window)[0]
+        window_start_pos = window_starts[w_idx]
+        window_end_pos = window_stops[w_idx]
+        
+        if enable_profiling:
+            print(f"[DEBUG] Window {w_idx}: start_pos={window_start_pos}, end_pos={window_end_pos}", flush=True)
+        
+        # Find variants in this window using positions
+        in_window = (positions >= window_start_pos) & (positions < window_end_pos)
+        window_variants = np.where(in_window)[0]
+        
+        if enable_profiling:
+            print(f"[DEBUG] Window {w_idx}: found {len(window_variants)} variants", flush=True)
+            if len(window_variants) > 0:
+                print(f"[DEBUG] Window {w_idx}: variant indices {window_variants[0]}-{window_variants[-1]}", flush=True)
+                print(f"[DEBUG] Window {w_idx}: variant positions {positions[window_variants[0]]}-{positions[window_variants[-1]]}", flush=True)
         
         # Store number of variants even if < 2
         n_variants_per_window[w_idx] = len(window_variants)
