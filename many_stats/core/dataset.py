@@ -695,6 +695,22 @@ class GenomicDataset:
         n_windows = len(self.windowed_dataset.windows)
         print(f"Created {n_windows} windows", flush=True)
         
+        # Ensure window coordinates are properly set
+        if self.enable_profiling:
+            print(f"[DEBUG] Setting up window coordinates...", flush=True)
+            print(f"[DEBUG] Before: coords={list(self.windowed_dataset.coords)}", flush=True)
+        
+        # Always ensure window coordinates are properly set
+        self.windowed_dataset = self.windowed_dataset.assign_coords({
+            'windows': np.arange(n_windows),
+            'window_start': ('windows', self.windowed_dataset.window_start),
+            'window_stop': ('windows', self.windowed_dataset.window_stop)
+        })
+        
+        if self.enable_profiling:
+            print(f"[DEBUG] After: coords={list(self.windowed_dataset.coords)}", flush=True)
+            print(f"[DEBUG] Window dimensions: {dict(self.windowed_dataset.dims)}", flush=True)
+        
         # Check for boundary issues and warn user
         self._check_window_boundaries()
         
