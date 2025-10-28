@@ -950,28 +950,35 @@ class GenomicDataset:
                 # Calculate LD matrix for each window
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
                 result_dataset = result_dataset.merge(ld_ds)
-            elif stat == 'ld_d':
-                # Calculate D values for each window
-                ld_ds = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
-                print(f"[DEBUG] ld_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(ld_ds.windows)} windows in output", flush=True)
-                if len(ld_ds.windows) != len(self.windowed_dataset.windows):
-                    print(f"[DEBUG] WARNING: ld_d dimension mismatch! Input {len(self.windowed_dataset.windows)}, output {len(ld_ds.windows)}", flush=True)
-                result_dataset = result_dataset.merge(ld_ds)
-                print(f"[DEBUG] After ld_d merge: result_dataset has {len(result_dataset.windows)} windows", flush=True)
-                if self.enable_profiling:
-                    elapsed = time.time() - stat_start
-                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
-            elif stat == 'ld_d_prime':
-                # Calculate D' values for each window
-                ld_ds = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
-                result_dataset = result_dataset.merge(ld_ds)
-                if self.enable_profiling:
-                    elapsed = time.time() - stat_start
-                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
-            elif stat == 'ld_r_squared':
-                # Calculate r² values for each window
-                ld_ds = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
-                result_dataset = result_dataset.merge(ld_ds)
+            # Handle all LD statistics at once if any are requested
+            elif stat in ['ld_d', 'ld_d_prime', 'ld_r_squared']:
+                # Only calculate LD once per window
+                if not hasattr(self, '_cached_ld_stats'):
+                    if self.enable_profiling:
+                        print(f"[DEBUG] Computing LD statistics for all windows...", flush=True)
+                    
+                    # Calculate all LD statistics at once
+                    self._cached_ld_stats = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
+                    
+                    if self.enable_profiling:
+                        print(f"[DEBUG] LD stats computed: {len(self.windowed_dataset.windows)} windows in input, {len(self._cached_ld_stats.windows)} windows in output", flush=True)
+                        if len(self._cached_ld_stats.windows) != len(self.windowed_dataset.windows):
+                            print(f"[DEBUG] WARNING: LD dimension mismatch! Input {len(self.windowed_dataset.windows)}, output {len(self._cached_ld_stats.windows)}", flush=True)
+                
+                # Map stat name to LD dataset variable
+                ld_var_map = {
+                    'ld_d': 'mean_D',
+                    'ld_d_prime': 'mean_D_prime',
+                    'ld_r_squared': 'mean_r_squared'
+                }
+                
+                # Create a new dataset with just the requested statistic
+                stat_ds = xr.Dataset({
+                    stat: self._cached_ld_stats[ld_var_map[stat]]
+                }, coords=self._cached_ld_stats.coords)
+                
+                result_dataset = result_dataset.merge(stat_ds)
+                
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
