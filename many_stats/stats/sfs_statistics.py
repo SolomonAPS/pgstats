@@ -1096,49 +1096,78 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     a2 = calculate_a2(max_n)
     u_d_star, v_d_star = calculate_v_d_star(max_n, a1, a2)
     
-    # Calculate Fu and Li's D or D* for each variant
-    fu_li_d_values = np.zeros(n_variants)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
     
-    for i in range(n_variants):
+    # Calculate Fu and Li's D or D* for each window
+    fu_li_d_values = np.zeros(n_windows)
+    
+    for w_idx in range(n_windows):
+        # Extract variants in this window
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[window_start:window_stop, :]
+        
+        # Calculate max sample size for this window
+        window_max_n = 0
+        for i in range(len(window_variant_matrix)):
+            site_n = 0
+            for j in range(n_samples):
+                if window_variant_matrix[i, j] != -1:
+                    site_n += 1
+            if site_n > window_max_n:
+                window_max_n = site_n
+        
+        if window_max_n <= 1:
+            fu_li_d_values[w_idx] = 0.0
+            continue
+        
+        # Calculate harmonic numbers for this window
+        a1 = calculate_a1(window_max_n)
+        a2 = calculate_a2(window_max_n)
+        u_d_star, v_d_star = calculate_v_d_star(window_max_n, a1, a2)
+        
+        # Get SFS for entire window
         if folded:
             # Use folded SFS (D*)
-            sfs, n_max = get_folded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_folded_sfs(window_variant_matrix)
             singleton_count = sfs[0] if len(sfs) > 0 else 0
         else:
             # Use unfolded SFS (D)
-            sfs, n_max = get_unfolded_sfs(variant_matrix[i:i+1, :])
+            sfs, n_max = get_unfolded_sfs(window_variant_matrix)
             singleton_count = sfs[0] if len(sfs) > 0 else 0
             
         S = calculate_S(sfs)
         
         if S == 0:
-            fu_li_d_values[i] = 0.0
+            fu_li_d_values[w_idx] = 0.0
             continue
         
         # Calculate numerator: S/a₁ - singleton estimator
-        # Note: Using max_n for scaling factor to maintain consistency
         if folded:
             # D*: S/a₁ - ((n-1)/n)η₁
-            numerator = S / a1 - ((max_n - 1) / max_n) * singleton_count
+            numerator = S / a1 - ((window_max_n - 1) / window_max_n) * singleton_count
         else:
             # D: S/a₁ - ζ₁
             numerator = S / a1 - singleton_count
         
-        # Calculate variance using max_n harmonic numbers
+        # Calculate variance using window_max_n
         var = u_d_star * S + v_d_star * S * (S - 1)
         
         if var <= 0:
             if S == 1:
-                fu_li_d_values[i] = numerator / np.sqrt(abs(u_d_star))
+                fu_li_d_values[w_idx] = numerator / np.sqrt(abs(u_d_star))
             else:
-                fu_li_d_values[i] = 0.0
+                fu_li_d_values[w_idx] = 0.0
         else:
-            fu_li_d_values[i] = numerator / np.sqrt(var)
+            fu_li_d_values[w_idx] = numerator / np.sqrt(var)
     
     # Create output dataset
     result = ds.copy()
     stat_name = "fu_li_d" if not folded else "fu_li_d_star"
-    result[stat_name] = (["variants"], fu_li_d_values)
+    result[stat_name] = (["windows"], fu_li_d_values)
     
     return result
 
