@@ -1075,11 +1075,28 @@ class GenomicDataset:
             print(f"Filtered to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
         
         # Then filter out windows with invalid stats
+        if self.enable_profiling:
+            print(f"[DEBUG] Checking for invalid stats...", flush=True)
+            print(f"[DEBUG] Data variables: {list(result_dataset.data_vars)}", flush=True)
+        
+        # Only check numeric variables that should have valid values
+        numeric_vars = ['mean_D', 'mean_D_prime', 'mean_r_squared', 'max_r_squared']
         valid_stats = []
-        for var in result_dataset.data_vars:
-            if var not in ['n_variants', 'n_pairs']:  # Skip count variables
-                values = result_dataset[var].values
-                valid_stats.append(~np.isnan(values))
+        
+        for var in numeric_vars:
+            if var in result_dataset.data_vars:
+                if self.enable_profiling:
+                    print(f"[DEBUG] Checking {var}...", flush=True)
+                    print(f"[DEBUG]   Shape: {result_dataset[var].shape}", flush=True)
+                    print(f"[DEBUG]   Type: {result_dataset[var].dtype}", flush=True)
+                
+                # Convert to float array to handle NaN checks
+                values = result_dataset[var].values.astype(float)
+                valid = ~np.isnan(values)
+                valid_stats.append(valid)
+                
+                if self.enable_profiling:
+                    print(f"[DEBUG]   Valid values: {np.sum(valid)}/{len(valid)}", flush=True)
         
         if valid_stats:
             # Window is valid if any statistic is valid
