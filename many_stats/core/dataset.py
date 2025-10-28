@@ -1128,9 +1128,24 @@ class GenomicDataset:
             print(f"Filtered to {len(result_dataset.windows)} windows with valid LD statistics", flush=True)
         
         # Print mean statistics
+        # Extract only window-related variables to avoid memory issues
         try:
-            results_df = result_dataset.to_dataframe()
-            self._print_statistic_means(results_df, stats, "windowed analysis")
+            window_vars = {var: result_dataset[var].values for var in result_dataset.data_vars if var in ['n_variants'] + stats}
+            stats_to_print = [stat for stat in stats if stat in window_vars]
+            if stats_to_print:
+                print(f"\nMean Statistics (windowed analysis):")
+                print("=" * 50)
+                for stat in stats_to_print:
+                    values = result_dataset[stat].values
+                    valid_mask = ~np.isnan(values)
+                    n_valid = np.sum(valid_mask)
+                    total = len(values)
+                    if n_valid > 0:
+                        mean_val = np.mean(values[valid_mask])
+                        print(f"  {stat:20s}: {mean_val:.6f} (n={n_valid}/{total} windows)")
+                    else:
+                        print(f"  {stat:20s}: No valid values")
+                print("=" * 50)
         except Exception as e:
             print(f"Note: Could not calculate mean statistics: {e}")
         
