@@ -888,8 +888,8 @@ class GenomicDataset:
         # Calculate each statistic
         for stat in stats:
             print(f"\n[DEBUG] Computing {stat}...", flush=True)
-            print(f"[DEBUG] Input self.windowed_dataset shape: {dict(self.windowed_dataset.dims)}", flush=True)
-            print(f"[DEBUG] Input result_dataset shape: {dict(result_dataset.dims)}", flush=True)
+            print(f"[DEBUG] Input self.windowed_dataset shape: {dict(self.windowed_dataset.sizes)}", flush=True)
+            print(f"[DEBUG] Input result_dataset shape: {dict(result_dataset.sizes)}", flush=True)
             
             # Time each statistic
             if self.enable_profiling:
@@ -952,7 +952,7 @@ class GenomicDataset:
                 result_dataset = result_dataset.merge(ld_ds)
             elif stat == 'ld_d':
                 # Calculate D values for each window
-                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                ld_ds = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
                 print(f"[DEBUG] ld_d computed: {len(self.windowed_dataset.windows)} windows in input, {len(ld_ds.windows)} windows in output", flush=True)
                 if len(ld_ds.windows) != len(self.windowed_dataset.windows):
                     print(f"[DEBUG] WARNING: ld_d dimension mismatch! Input {len(self.windowed_dataset.windows)}, output {len(ld_ds.windows)}", flush=True)
@@ -963,14 +963,14 @@ class GenomicDataset:
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'ld_d_prime':
                 # Calculate D' values for each window
-                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                ld_ds = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
                 result_dataset = result_dataset.merge(ld_ds)
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'ld_r_squared':
                 # Calculate r² values for each window
-                ld_ds = calculate_windowed_ld(self.windowed_dataset)
+                ld_ds = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
                 result_dataset = result_dataset.merge(ld_ds)
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
