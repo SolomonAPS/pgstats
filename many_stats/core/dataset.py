@@ -1861,7 +1861,11 @@ class GenomicDataset:
                     print(f"[Timing] Total region time: {elapsed:.2f}s", flush=True)
                 
             except Exception as e:
+                import traceback
                 print(f"  ERROR: analyzing region {contig}:{region_start}-{region_end}: {e}")
+                if self.enable_profiling:
+                    print(f"  Full traceback:")
+                    traceback.print_exc()
                 # Restore original dataset even on error
                 if 'original_dataset' in locals():
                     self.dataset = original_dataset
