@@ -245,17 +245,23 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
     if n_variants < 3:  # Need at least 3 variants for meaningful analysis
         return np.nan
     
+    # Adjust window_size if we have fewer variants than requested
+    if n_variants < window_size:
+        window_size = n_variants
+    
+    # Convert to dosage (sum across ploidy)
+    dosage = np.zeros((n_variants, n_samples))
+    for i in range(n_variants):
+        for j in range(n_samples):
+            dosage[i, j] = genotypes[i, j, :].sum()
+    
     # Calculate all pairwise r² values
     r_squared_matrix = np.zeros((n_variants, n_variants))
     
     for i in range(n_variants):
         for j in range(i + 1, n_variants):
-            # Get genotypes for this pair
-            gt_i = genotypes[i, :, 0]  # Use first chromosome
-            gt_j = genotypes[j, :, 0]  # Use first chromosome
-            
-            # Combine into pair format for calculate_ld_r_squared
-            pair_genotypes = np.column_stack((gt_i, gt_j))
+            # Get dosage for this pair
+            pair_genotypes = np.column_stack((dosage[i, :], dosage[j, :]))
             
             # Calculate r²
             r_squared = calculate_ld_r_squared(pair_genotypes)
