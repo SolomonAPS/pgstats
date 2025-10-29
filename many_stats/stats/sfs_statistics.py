@@ -1074,24 +1074,6 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
     
-    # Calculate max sample size across all variants (following scikit-allel/sgkit)
-    max_n = 0
-    for i in range(n_variants):
-        site_n = 0
-        for j in range(n_samples):
-            if variant_matrix[i, j] != -1:
-                site_n += 1
-        if site_n > max_n:
-            max_n = site_n
-    
-    # Note: We no longer do early exit here - check window_max_n in the loop instead
-    # This ensures we return proper window-dimensioned results
-    
-    # Calculate harmonic numbers once using max_n
-    a1 = calculate_a1(max_n)
-    a2 = calculate_a2(max_n)
-    u_d_star, v_d_star = calculate_v_d_star(max_n, a1, a2)
-    
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
     window_starts = ds.window_start_idx.values
@@ -1226,19 +1208,6 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             else:
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
-    
-    # Calculate max sample size across all variants (following scikit-allel/sgkit)
-    max_n = 0
-    for i in range(n_variants):
-        site_n = 0
-        for j in range(n_samples):
-            if variant_matrix[i, j] != -1:
-                site_n += 1
-        if site_n > max_n:
-            max_n = site_n
-    
-    # Note: We no longer do early exit here - check window_max_n in the loop instead
-    # This ensures we return proper window-dimensioned results
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1402,31 +1371,6 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
             else:
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
-    
-    # Calculate max sample size across all variants (following scikit-allel/sgkit)
-    max_n = 0
-    for i in range(n_variants):
-        site_n = 0
-        for j in range(n_samples):
-            if variant_matrix[i, j] != -1:
-                site_n += 1
-        if site_n > max_n:
-            max_n = site_n
-    
-    # Note: We no longer do early exit here - check window_max_n in the loop instead
-    # This ensures we return proper window-dimensioned results
-    
-    # Calculate harmonic numbers once using max_n
-    a1 = calculate_a1(max_n)
-    a2 = calculate_a2(max_n)
-    b1 = calculate_b1(max_n)
-    b2 = calculate_b2(max_n)
-    
-    # Pre-calculate variance components using max_n
-    term1 = (max_n / (2.0 * (max_n - 1.0))) - (1.0 / a1)
-    term2 = b2 + 2.0 * (max_n / (max_n - 1.0)) ** 2 * b2
-    term2 -= 2.0 * (max_n * b2 - max_n + 1.0) / ((max_n - 1.0) * a1)
-    term2 -= (3.0 * max_n + 1.0) / (max_n - 1.0)
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1637,18 +1581,6 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             else:
                 allele_sum = np.sum(genotypes[i, j, :])
                 variant_matrix[i, j] = int(allele_sum > ploidy // 2)
-    
-    # Calculate sample sizes for each variant
-    n = np.sum(variant_matrix != -1, axis=1)
-    max_n = np.max(n)
-    
-    # Note: We no longer do early exit here - check window_max_n in the loop instead
-    # This ensures we return proper window-dimensioned results
-    
-    # Calculate harmonic numbers once using max_n
-    a1 = calculate_a1(max_n)
-    a2 = calculate_a2(max_n)
-    u_h, v_h = calculate_v_h(max_n, a1, a2)
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
