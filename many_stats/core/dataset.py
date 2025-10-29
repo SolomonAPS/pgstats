@@ -993,16 +993,19 @@ class GenomicDataset:
                 # Map stat name to LD dataset variable
                 ld_var_map = {
                     'ld_d': 'mean_D',
-                    'ld_d_prime': 'mean_D_prime',
-                    'ld_r_squared': 'mean_r_squared'
+                    'ld_dprime': 'mean_D_prime',
+                    'ld_r2': 'mean_r_squared'
                 }
                 
-                # Create a new dataset with just the requested statistic
-                stat_ds = xr.Dataset({
-                    stat: self._cached_ld_stats[ld_var_map[stat]]
-                }, coords=self._cached_ld_stats.coords)
-                
-                result_dataset = result_dataset.merge(stat_ds)
+                # Get the actual variable name from the cached LD stats
+                var_name = ld_var_map.get(stat)
+                if var_name and var_name in self._cached_ld_stats:
+                    # Create a new dataset with just the requested statistic
+                    stat_ds = xr.Dataset({
+                        var_name: self._cached_ld_stats[var_name]
+                    }, coords=self._cached_ld_stats.coords)
+                    
+                    result_dataset = result_dataset.merge(stat_ds)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
