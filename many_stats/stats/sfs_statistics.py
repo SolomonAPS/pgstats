@@ -980,7 +980,7 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
                 window_max_n = site_n
         
         if window_max_n <= 1:
-            tajima_d_values[w_idx] = 0.0
+            tajima_d_values[w_idx] = np.nan
             continue
         
         # Calculate harmonic numbers for this window
@@ -994,7 +994,7 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         S = calculate_S(sfs)
         
         if S == 0:
-            tajima_d_values[w_idx] = 0.0
+            tajima_d_values[w_idx] = np.nan
             continue
         
         pi = calculate_pi(window_variant_matrix)
@@ -1003,7 +1003,7 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         var = c1 * S + c2 * S * (S - 1)
         
         if var <= 0:
-            tajima_d_values[w_idx] = 0.0
+            tajima_d_values[w_idx] = np.nan
         else:
             tajima_d_values[w_idx] = (pi - S / a1) / np.sqrt(var)
     
@@ -1121,7 +1121,7 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
                 window_max_n = site_n
         
         if window_max_n <= 1:
-            fu_li_d_values[w_idx] = 0.0
+            fu_li_d_values[w_idx] = np.nan
             continue
         
         # Calculate harmonic numbers for this window
@@ -1142,7 +1142,7 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         S = calculate_S(sfs)
         
         if S == 0:
-            fu_li_d_values[w_idx] = 0.0
+            fu_li_d_values[w_idx] = np.nan
             continue
         
         # Calculate numerator: S/a₁ - singleton estimator
@@ -1160,7 +1160,7 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             if S == 1:
                 fu_li_d_values[w_idx] = numerator / np.sqrt(abs(u_d_star))
             else:
-                fu_li_d_values[w_idx] = 0.0
+                fu_li_d_values[w_idx] = np.nan
         else:
             fu_li_d_values[w_idx] = numerator / np.sqrt(var)
     
@@ -1273,7 +1273,7 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
                 window_max_n = site_n
         
         if window_max_n <= 1:
-            fu_li_f_values[w_idx] = 0.0
+            fu_li_f_values[w_idx] = np.nan
             continue
         
         # Calculate harmonic numbers for this window
@@ -1294,7 +1294,7 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         S = calculate_S(sfs)
         
         if S == 0:
-            fu_li_f_values[w_idx] = 0.0
+            fu_li_f_values[w_idx] = np.nan
             continue
             
         # Calculate θπ for entire window
@@ -1315,7 +1315,7 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             if S == 1:
                 fu_li_f_values[w_idx] = numerator / np.sqrt(abs(u_f_star))
             else:
-                fu_li_f_values[w_idx] = 0.0
+                fu_li_f_values[w_idx] = np.nan
         else:
             fu_li_f_values[w_idx] = numerator / np.sqrt(var)
     
@@ -1464,7 +1464,7 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
                 window_max_n = site_n
         
         if window_max_n <= 1:
-            zeng_e_values[w_idx] = 0.0
+            zeng_e_values[w_idx] = np.nan
             continue
         
         # Calculate harmonic numbers for this window
@@ -1482,7 +1482,7 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         S = calculate_S(sfs)
         
         if S == 0:
-            zeng_e_values[w_idx] = 0.0
+            zeng_e_values[w_idx] = np.nan
             continue
         
         # Calculate theta_L and theta_w for entire window
@@ -1496,7 +1496,7 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
             if S == 1:
                 zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(abs(term1))
             else:
-                zeng_e_values[w_idx] = 0.0
+                zeng_e_values[w_idx] = np.nan
         else:
             zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(var_e)
     
@@ -1685,7 +1685,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
                 window_max_n = site_n
         
         if window_max_n <= 1:
-            fay_wu_h_values[w_idx] = 0.0
+            fay_wu_h_values[w_idx] = np.nan
             continue
         
         # Calculate harmonic numbers for this window
@@ -1698,7 +1698,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         S = calculate_S(sfs)
         
         if S == 0:
-            fay_wu_h_values[w_idx] = 0.0
+            fay_wu_h_values[w_idx] = np.nan
             continue
             
         pi = calculate_pi(window_variant_matrix)
@@ -1711,7 +1711,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             if S == 1:
                 fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(abs(u_h))
             else:
-                fay_wu_h_values[w_idx] = 0.0
+                fay_wu_h_values[w_idx] = np.nan
         else:
             fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(var_h)
     
