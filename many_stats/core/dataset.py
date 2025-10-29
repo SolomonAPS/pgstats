@@ -899,17 +899,28 @@ class GenomicDataset:
                 'singletons', 'singletons_unfolded'
             ]
         
-        # Start with a copy of windowed_dataset (may already be filtered by min_variants)
-        result_dataset = self.windowed_dataset.copy()
-        
-        # Add n_variants per window (use indices, not positions)
+        # Filter windowed_dataset to only include windows with sufficient variants
+        # This must happen BEFORE calculating statistics to avoid NaN values
         window_starts = self.windowed_dataset.window_start_idx.values
         window_stops = self.windowed_dataset.window_stop_idx.values
         n_variants_per_window = window_stops - window_starts
-        result_dataset['n_variants'] = (['windows'], n_variants_per_window)
         
-        # Store the number of windows BEFORE filtering to track what will be removed
+        # Store the number of windows BEFORE filtering
         n_windows_before_filtering = len(self.windowed_dataset.windows)
+        
+        # Apply min_variants filter if set
+        if self.window_config.min_variants > 0:
+            valid_windows_mask = n_variants_per_window >= self.window_config.min_variants
+            # Filter the windowed dataset to only valid windows
+            self.windowed_dataset = self.windowed_dataset.isel(windows=valid_windows_mask)
+            # Update n_variants array to match filtered dataset
+            n_variants_per_window = n_variants_per_window[valid_windows_mask]
+        
+        # Start with a copy of the FILTERED windowed_dataset
+        result_dataset = self.windowed_dataset.copy()
+        
+        # Add n_variants per window
+        result_dataset['n_variants'] = (['windows'], n_variants_per_window)
         
         
         # Calculate each statistic
@@ -1056,14 +1067,8 @@ class GenomicDataset:
         result_dataset_before_norm = result_dataset.copy()
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
         
-        # Now filter out windows with too few variants and invalid stats
-        
-        # First filter by minimum variants if specified
-        if hasattr(self, 'window_filter_mask') and self.window_filter_mask is not None:
-            result_dataset = result_dataset.isel(windows=self.window_filter_mask)
-            print(f"Filtered to {len(result_dataset.windows)} windows with sufficient variants", flush=True)
-        
-        # Filter out windows where LD statistics failed to calculate
+        # Now filter out windows where LD statistics failed to calculate
+        # (min_variants filtering already done before stat calculation)
         
         # Check LD statistics that should have valid values if calculation succeeded
         ld_stats = {
