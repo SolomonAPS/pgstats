@@ -160,7 +160,7 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
             # Backward compatibility aliases
             'pi', 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta',
             # LD statistics
-            'ld_d', 'ld_dprime', 'ld_r2',
+            'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
             # Haplotype statistics
             'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
             # Special option
@@ -470,7 +470,7 @@ def run_stats_command(args):
             # Theta estimators
             'theta_pi', 'theta_w', 'theta_h', 'theta_l',
             # LD statistics
-            'ld_d', 'ld_dprime', 'ld_r2',
+            'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
             # Haplotype statistics
             'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1'
         ]
