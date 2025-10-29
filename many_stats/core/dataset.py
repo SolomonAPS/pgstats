@@ -962,14 +962,20 @@ class GenomicDataset:
                 pass
             elif stat == 'zeng_e':
                 stat_ds = zeng_e(self.windowed_dataset)
+                print(f"DEBUG: zeng_e stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
+                print(f"DEBUG: zeng_e first 3 values: {stat_ds['zeng_e'].values[:3]}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"DEBUG: After merge, result_dataset has zeng_e: {'zeng_e' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'fay_wu_h':
                 stat_ds = fay_wu_h(self.windowed_dataset)
+                print(f"DEBUG: fay_wu_h stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
+                print(f"DEBUG: fay_wu_h first 3 values: {stat_ds['fay_wu_h'].values[:3]}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"DEBUG: After merge, result_dataset has fay_wu_h: {'fay_wu_h' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
@@ -1034,7 +1040,10 @@ class GenomicDataset:
                 result_dataset = result_dataset.merge(stat_ds)
             elif stat == 'omega_statistic':
                 stat_ds = omega_statistic(self.windowed_dataset, enable_profiling=self.enable_profiling)
+                print(f"DEBUG: omega_statistic stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
+                print(f"DEBUG: omega_statistic first 3 values: {stat_ds['omega_statistic'].values[:3]}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds)
+                print(f"DEBUG: After merge, result_dataset has omega_statistic: {'omega_statistic' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
@@ -1841,6 +1850,7 @@ class GenomicDataset:
                     'ld_d': ['mean_D'],
                     'ld_dprime': ['mean_D_prime'],
                     'ld_r2': ['mean_r_squared'],
+                    'omega_statistic': ['omega_statistic'],
                     'haplotype_diversity': ['haplotype_diversity'],
                     'garud_h1': ['garud_h1'],
                     'garud_h12': ['garud_h12'],
