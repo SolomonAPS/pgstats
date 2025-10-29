@@ -119,7 +119,7 @@ class GenomicDataset:
         
         if isinstance(data_source, str):
             data_path = Path(data_source)
-            if data_path.suffix in ['.zarr'] or 'zarr' in str(data_path):
+            if data_path.suffix in ['.zarr', '.vcz'] or 'zarr' in str(data_path):
                 # Load Zarr dataset
                 import sgkit as sg
                 self.dataset = sg.load_dataset(data_source)
