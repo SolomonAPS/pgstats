@@ -657,6 +657,9 @@ def omega_statistic(ds: xr.Dataset,
     window_starts = ds.window_start_idx.values
     window_stops = ds.window_stop_idx.values
     
+    if n_windows > 0:
+        print(f"DEBUG omega_statistic: n_windows={n_windows}, first window variants: {window_stops[0] - window_starts[0]}", flush=True)
+    
     # Calculate omega for each window
     omega_values = np.full(n_windows, np.nan)
     
