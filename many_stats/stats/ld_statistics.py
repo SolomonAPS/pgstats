@@ -420,8 +420,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
     # Get variant positions and window information
     positions = ds.variant_position.values
     
-    if enable_profiling:
-    
     # Verify windows exist
     required_vars = ['windows', 'window_start_idx', 'window_stop_idx']
     missing_vars = [var for var in required_vars if var not in ds.dims and var not in ds.data_vars]
