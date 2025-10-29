@@ -268,6 +268,11 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
     
     # Count haplotype frequencies
     unique_hashes, counts = count_unique_values(hash_values)
+    
+    # Protect against division by zero
+    if n_valid_haplotypes == 0 or len(counts) == 0:
+        return np.array([np.nan, np.nan, np.nan, np.nan])
+    
     frequencies = counts / n_valid_haplotypes
     
     # Sort frequencies in descending order
