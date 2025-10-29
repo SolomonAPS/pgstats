@@ -612,12 +612,6 @@ def run_info_command(args):
     print(f"  Samples: {summary['n_samples']:,}")
     print(f"  Contigs: {summary['n_contigs']:,}")
     
-    if summary['callable_sites']:
-        print(f"\nCallable Sites:")
-        print(f"  Callable: {summary['callable_sites']:,}")
-        print(f"  Non-callable: {summary['n_variants'] - summary['callable_sites']:,}")
-        print(f"  Callable rate: {summary['callable_sites']/summary['n_variants']:.1%}")
-    
     # Check for missing data
     from many_stats.utils.validation import check_missing_data
     missing_info = check_missing_data(genomic_ds.dataset)
