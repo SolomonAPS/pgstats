@@ -453,7 +453,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
         window_start_pos = window_starts[w_idx]
         window_end_pos = window_stops[w_idx]
         
-        if enable_profiling:
         
         # Get variants in this window using indices
         window_variants = np.arange(window_starts[w_idx], window_stops[w_idx])
@@ -513,15 +512,12 @@ def calculate_windowed_ld(ds: xr.Dataset,
         print(f"[Timing] LD calculation completed in {elapsed:.2f}s", flush=True)
         n_valid = np.sum(~np.isnan(mean_D))
     
-    if enable_profiling:
     
     # Create result dataset with same number of windows as input
     result = xr.Dataset()
     
-    if enable_profiling:
     
     # Copy window coordinates from input
-    if enable_profiling:
     
     result = result.assign_coords({
         'windows': ds.windows
@@ -535,7 +531,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
     if 'window_stop' in ds.data_vars or 'window_stop' in ds.coords:
         result = result.assign({'window_stop': ds.window_stop})
     
-    if enable_profiling:
     
     # Add data variables with WINDOWS dimension
     result = result.assign({
@@ -548,7 +543,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
         'mean_distance': (['windows'], mean_distance)
     })
     
-    if enable_profiling:
     
     return result
 
