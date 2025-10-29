@@ -1445,7 +1445,7 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     window_stops = ds.window_stop_idx.values
     
     # Calculate Zeng's E for each window
-    zeng_e_values = np.zeros(n_windows)
+    zeng_e_values = np.full(n_windows, np.nan)
     
     for w_idx in range(n_windows):
         # Extract variants in this window
@@ -1666,7 +1666,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     window_stops = ds.window_stop_idx.values
     
     # Calculate Fay and Wu's H for each window
-    fay_wu_h_values = np.zeros(n_windows)
+    fay_wu_h_values = np.full(n_windows, np.nan)
     
     for w_idx in range(n_windows):
         # Extract variants in this window
