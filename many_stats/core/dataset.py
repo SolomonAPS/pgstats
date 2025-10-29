@@ -1800,6 +1800,12 @@ class GenomicDataset:
             self.window_config.step_size = step_size
             self.window_config.min_variants = min_variants
             
+            # Clear cached statistics from previous region
+            if hasattr(self, '_cached_ld_stats'):
+                delattr(self, '_cached_ld_stats')
+            if hasattr(self, '_cached_garud_stats'):
+                delattr(self, '_cached_garud_stats')
+            
             try:
                 # Filter to region first
                 if self.enable_profiling:
