@@ -504,12 +504,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
             max_r_squared[w_idx] = window_df['r_squared'].max()
             mean_distance[w_idx] = window_df['distance'].mean()
     
-    if enable_profiling:
-        elapsed = time.time() - start_time
-        print(f"[Timing] LD calculation completed in {elapsed:.2f}s", flush=True)
-        n_valid = np.sum(~np.isnan(mean_D))
-    
-    
     # Create result dataset with same number of windows as input
     result = xr.Dataset()
     
@@ -625,37 +619,53 @@ def ld_r_squared(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_pr
 
 def omega_statistic(ds: xr.Dataset, 
                    call_genotype: str = "call_genotype",
-                   window_size: int = 10,
+                   omega_window_size: int = 10,
                    enable_profiling: bool = False) -> xr.Dataset:
     """
     Calculate Kim and Nielsen's omega (ω) statistic for detecting hard sweeps.
     
     The omega statistic contrasts linkage disequilibrium within regions
     versus between regions to detect the characteristic LD pattern of
-    a completed hard sweep.
+    a completed hard sweep. This calculates omega for each window in the dataset.
     
     Reference: Walsh and Lynch (2018) Equation 9.37
     
     Args:
-        ds: sgkit Dataset containing genotype calls
+        ds: sgkit Dataset containing genotype calls and windows
         call_genotype: Name of the genotype variable
-        window_size: Size of the sliding window for analysis
+        omega_window_size: Size of the sliding window for omega analysis (number of variants)
+        enable_profiling: Whether to print timing info
         
     Returns:
-        Dataset with omega statistic value
+        Dataset with omega statistic values per window
     """
     if enable_profiling:
         import time
         start_time = time.time()
     
     genotypes = ds[call_genotype].values
+    n_variants, n_samples, ploidy = genotypes.shape
     
-    # Calculate omega statistic
-    omega_value = calculate_omega_statistic(genotypes, window_size)
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
+    
+    # Calculate omega for each window
+    omega_values = np.full(n_windows, np.nan)
+    
+    for w_idx in range(n_windows):
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_genotypes = genotypes[window_start:window_stop, :, :]
+        
+        # Calculate omega for this window
+        if len(window_genotypes) >= 3:  # Need at least 3 variants
+            omega_values[w_idx] = calculate_omega_statistic(window_genotypes, omega_window_size)
     
     # Create result dataset
     result = ds.copy()
-    result["omega_statistic"] = (["statistics"], np.array([omega_value]))
+    result["omega_statistic"] = (["windows"], omega_values)
     
     if enable_profiling:
         elapsed = time.time() - start_time

@@ -25,7 +25,7 @@ from many_stats.stats.sfs_statistics import (
 )
 from many_stats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from many_stats.stats.ld_statistics import (
-    calculate_ld_matrix, calculate_windowed_ld
+    calculate_ld_matrix, calculate_windowed_ld, omega_statistic
 )
 
 
@@ -1024,6 +1024,13 @@ class GenomicDataset:
                 }, coords=self._cached_garud_stats.coords)
                 
                 result_dataset = result_dataset.merge(stat_ds)
+            elif stat == 'omega_statistic':
+                stat_ds = omega_statistic(self.windowed_dataset, enable_profiling=self.enable_profiling)
+                result_dataset = result_dataset.merge(stat_ds)
+                
+                if self.enable_profiling:
+                    elapsed = time.time() - stat_start
+                    print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
         
         # Note: Callable sites are now handled by setting non-callable sites to -1
         # sgkit's statistics will automatically account for missing data
