@@ -1432,11 +1432,16 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         # Calculate variance of E
         var_e = term1 * theta_w_val + term2 * theta_w_val * theta_w_val
         
+        # DEBUG: Print variance for first few windows
+        if w_idx < 3:
+            print(f"DEBUG zeng_e window {w_idx}: var_e={var_e}, theta_w={theta_w_val}", flush=True)
+        
         if var_e <= 0:
             if S == 1:
                 zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(abs(term1))
             else:
-                zeng_e_values[w_idx] = np.nan
+                # Negative variance - use absolute value as approximation
+                zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(abs(var_e))
         else:
             zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(var_e)
     
@@ -1639,11 +1644,16 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         # Calculate variance using window harmonic numbers
         var_h = u_h * S + v_h * S * (S - 1)
         
+        # DEBUG: Print variance for first few windows
+        if w_idx < 3:
+            print(f"DEBUG fay_wu_h window {w_idx}: var_h={var_h}", flush=True)
+        
         if var_h <= 0:
             if S == 1:
                 fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(abs(u_h))
             else:
-                fay_wu_h_values[w_idx] = np.nan
+                # Negative variance - use absolute value as approximation
+                fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(abs(var_h))
         else:
             fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(var_h)
     

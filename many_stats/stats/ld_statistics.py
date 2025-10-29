@@ -271,6 +271,11 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
     # Calculate omega for different window positions
     max_omega = -np.inf
     
+    # DEBUG: Check if r² matrix has valid values
+    valid_r2 = np.sum(~np.isnan(r_squared_matrix) & (r_squared_matrix > 0))
+    if valid_r2 == 0:
+        return np.nan  # No valid LD to calculate omega
+    
     for start_pos in range(n_variants - window_size + 1):
         end_pos = start_pos + window_size
         
