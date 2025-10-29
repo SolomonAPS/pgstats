@@ -130,6 +130,11 @@ def filter_haplotypes_by_missingness(haplotypes: np.ndarray,
         Boolean array of shape (n_haplotypes,) indicating which haplotypes pass the filter
     """
     n_variants, n_haplotypes = haplotypes.shape
+    
+    # If no variants, return all False (no valid haplotypes)
+    if n_variants == 0:
+        return np.zeros(n_haplotypes, dtype=numba.boolean)
+    
     valid_haplotypes = np.ones(n_haplotypes, dtype=numba.boolean)
     
     for i in range(n_haplotypes):
@@ -171,7 +176,8 @@ def calculate_haplotype_diversity(haplotypes: np.ndarray) -> float:
     """
     n_variants, n_haplotypes = haplotypes.shape
     
-    if n_haplotypes < 2:
+    # Check for empty window or insufficient haplotypes
+    if n_variants == 0 or n_haplotypes < 2:
         return np.nan
     
     # Count unique haplotypes
@@ -252,7 +258,8 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
     """
     n_variants, n_haplotypes = haplotypes.shape
     
-    if n_haplotypes < 2:
+    # Check for empty window or insufficient haplotypes
+    if n_variants == 0 or n_haplotypes < 2:
         return np.array([np.nan, np.nan, np.nan, np.nan])
     
     # Filter haplotypes by missingness threshold
