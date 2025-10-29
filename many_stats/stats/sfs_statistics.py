@@ -1489,6 +1489,10 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         theta_l_val = calculate_theta_l_per_site(window_variant_matrix)
         theta_w_val = calculate_theta_w_per_site(window_variant_matrix)
         
+        # DEBUG: Check if theta values are zero
+        if w_idx < 3:  # Only print for first few windows
+            print(f"DEBUG zeng_e window {w_idx}: S={S}, theta_l={theta_l_val}, theta_w={theta_w_val}, term1={term1}, term2={term2}", flush=True)
+        
         # Calculate variance of E
         var_e = term1 * theta_w_val + term2 * theta_w_val * theta_w_val
         
@@ -1703,6 +1707,10 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             
         pi = calculate_pi(window_variant_matrix)
         theta_h_val = calculate_theta_h_per_site(window_variant_matrix)
+        
+        # DEBUG: Check if theta_h is zero
+        if w_idx < 3:  # Only print for first few windows
+            print(f"DEBUG fay_wu_h window {w_idx}: S={S}, pi={pi}, theta_h={theta_h_val}, u_h={u_h}, v_h={v_h}", flush=True)
         
         # Calculate variance using window harmonic numbers
         var_h = u_h * S + v_h * S * (S - 1)

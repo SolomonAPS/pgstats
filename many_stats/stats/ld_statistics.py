@@ -662,6 +662,9 @@ def omega_statistic(ds: xr.Dataset,
         # Calculate omega for this window
         if len(window_genotypes) >= 3:  # Need at least 3 variants
             omega_values[w_idx] = calculate_omega_statistic(window_genotypes, omega_window_size)
+            # DEBUG: Check omega calculation
+            if w_idx < 3:  # Only print for first few windows
+                print(f"DEBUG omega window {w_idx}: n_variants={len(window_genotypes)}, omega={omega_values[w_idx]}", flush=True)
     
     # Create result dataset
     result = ds.copy()
