@@ -442,14 +442,11 @@ def run_stats_command(args):
             # Load BED in lazy mode (don't mask genome-wide, mask each region individually)
             genomic_ds._load_callable_sites(lazy_mode=True)
         
-        print(f"Debug: GenomicDataset created successfully", flush=True)
-        print(f"Debug: genomic_ds.dataset.sizes: {genomic_ds.dataset.sizes}", flush=True)
     except Exception as e:
         logger.error(f"Failed to load dataset: {e}")
         sys.exit(1)
     
     # Print dataset summary
-    print(f"Debug: About to call get_summary()", flush=True)
     summary = genomic_ds.get_summary()
     print(f"\nDataset Summary:", flush=True)
     print(f"  Variants: {summary['n_variants']:,}", flush=True)
@@ -492,8 +489,6 @@ def run_stats_command(args):
             print(f"  Step size: {args.step_size or args.window_size:,} bp")
             print(f"  Minimum variants: {args.min_variants}")
             print(f"\nStarting statistics calculation across {len(regions_list)} regions...")
-            print(f"Debug: About to call calculate_stats_for_regions...", flush=True)
-            print(f"Debug: genomic_ds.dataset.sizes: {genomic_ds.dataset.sizes}", flush=True)
             
             results_df = genomic_ds.calculate_stats_for_regions(
                 regions=regions_list,
