@@ -457,9 +457,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
         # Get variants in this window using indices
         window_variants = np.arange(window_starts[w_idx], window_stops[w_idx])
         
-        if enable_profiling:
-            if len(window_variants) > 0:
-        
         # Store number of variants even if < 2
         n_variants_per_window[w_idx] = len(window_variants)
         
