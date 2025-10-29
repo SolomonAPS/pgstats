@@ -452,8 +452,6 @@ def run_stats_command(args):
     print(f"  Variants: {summary['n_variants']:,}", flush=True)
     print(f"  Samples: {summary['n_samples']:,}", flush=True)
     print(f"  Contigs: {summary['n_contigs']:,}", flush=True)
-    if summary['callable_sites']:
-        print(f"  Callable sites: {summary['callable_sites']:,}", flush=True)
     
     # Filter missing data if needed
     if args.max_missing > 0:

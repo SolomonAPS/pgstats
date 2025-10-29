@@ -289,7 +289,7 @@ class GenomicDataset:
             if cached_mask is not None:
                 # Use cached mask directly
                 self._apply_cached_mask(cached_mask)
-                print(f"Applied callable sites mask: {self.callable_sites:,} callable sites (from cache)", flush=True)
+                print(f"Masked non-callable variants: {self.callable_sites:,} variants remaining (from cache)", flush=True)
                 return
         
         # Create non-callable sites mask and apply it (bed_df already loaded above)
@@ -299,7 +299,7 @@ class GenomicDataset:
         if cache_path:
             self._save_cached_mask(cache_path, callable_mask)
         
-        print(f"Applied callable sites mask: {self.callable_sites:,} callable sites", flush=True)
+        print(f"Masked non-callable variants: {self.callable_sites:,} variants remaining", flush=True)
     
     def _apply_cached_mask(self, callable_mask: np.ndarray):
         """
