@@ -1819,6 +1819,12 @@ class GenomicDataset:
                 if use_callable_sites and hasattr(self, 'bed_gr') and self.bed_gr is not None:
                     region_dataset = self._apply_mask_to_region(region_dataset, region_start, region_end, contig)
                 
+                # Check if any variants remain in the region
+                n_variants = len(region_dataset.variants)
+                if n_variants == 0:
+                    print(f"  WARNING: No variants in region {contig}:{region_start:,}-{region_end:,}, skipping", flush=True)
+                    continue
+                
                 # Temporarily swap dataset to use region_dataset
                 original_dataset = self.dataset
                 self.dataset = region_dataset
