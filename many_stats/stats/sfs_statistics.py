@@ -1485,9 +1485,9 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
             zeng_e_values[w_idx] = np.nan
             continue
         
-        # Calculate theta_L and theta_w for entire window
-        theta_l_val = calculate_theta_l_per_site(window_variant_matrix)
-        theta_w_val = calculate_theta_w_per_site(window_variant_matrix)
+        # Calculate theta_L and theta_w from SFS (not per-site)
+        theta_l_val = calculate_theta_l(sfs, window_max_n)
+        theta_w_val = calculate_theta_w(sfs, window_max_n)
         
         # DEBUG: Check if theta values are zero
         if w_idx < 3:  # Only print for first few windows
@@ -1706,7 +1706,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             continue
             
         pi = calculate_pi(window_variant_matrix)
-        theta_h_val = calculate_theta_h_per_site(window_variant_matrix)
+        theta_h_val = calculate_theta_h(sfs, window_max_n)
         
         # DEBUG: Check if theta_h is zero
         if w_idx < 3:  # Only print for first few windows
