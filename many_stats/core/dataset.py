@@ -943,17 +943,23 @@ class GenomicDataset:
                 stat_ds = theta_l(self.windowed_dataset)
                 result_dataset = result_dataset.merge(stat_ds)
             elif stat == 'fu_li_d':
-                stat_ds = fu_li_d(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                # Calculate both folded (D*) and unfolded (D) versions
+                stat_ds_folded = fu_li_d(self.windowed_dataset, folded=True)
+                stat_ds_unfolded = fu_li_d(self.windowed_dataset, folded=False)
+                result_dataset = result_dataset.merge(stat_ds_folded)
+                result_dataset = result_dataset.merge(stat_ds_unfolded)
             elif stat == 'fu_li_f':
-                stat_ds = fu_li_f(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                # Calculate both folded (F*) and unfolded (F) versions
+                stat_ds_folded = fu_li_f(self.windowed_dataset, folded=True)
+                stat_ds_unfolded = fu_li_f(self.windowed_dataset, folded=False)
+                result_dataset = result_dataset.merge(stat_ds_folded)
+                result_dataset = result_dataset.merge(stat_ds_unfolded)
             elif stat == 'fu_li_d_unfolded':
-                stat_ds = fu_li_d_unfolded(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                # Alias for fu_li_d - already calculated above
+                pass
             elif stat == 'fu_li_f_unfolded':
-                stat_ds = fu_li_f_unfolded(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                # Alias for fu_li_f - already calculated above
+                pass
             elif stat == 'zeng_e':
                 stat_ds = zeng_e(self.windowed_dataset)
                 result_dataset = result_dataset.merge(stat_ds)
@@ -1613,10 +1619,11 @@ class GenomicDataset:
         print("=" * 50)
         
         # Map stat names to dataset variables
+        # Note: fu_li_d and fu_li_f now calculate BOTH folded and unfolded versions
         stat_map = {
             'tajima_d': 'tajima_d',
-            'fu_li_d': 'fu_li_d_star',
-            'fu_li_f': 'fu_li_f_star',
+            'fu_li_d': ['fu_li_d_star', 'fu_li_d'],  # Both folded (D*) and unfolded (D)
+            'fu_li_f': ['fu_li_f_star', 'fu_li_f'],  # Both folded (F*) and unfolded (F)
             'fu_li_d_unfolded': 'fu_li_d',
             'fu_li_f_unfolded': 'fu_li_f',
             'zeng_e': 'zeng_e',
@@ -1637,21 +1644,45 @@ class GenomicDataset:
         }
         
         for stat in stats:
-            var_name = stat_map.get(stat)
-            if var_name in result_dataset:
-                # Calculate mean, excluding NaN values
-                values = result_dataset[var_name].values
-                valid_mask = ~np.isnan(values)
-                n_windows = np.sum(valid_mask)
-                total_windows = len(values)
-                
-                if n_windows > 0:
-                    mean_val = np.mean(values[valid_mask])
-                    print(f"  {stat:20s}: {mean_val:.6f} (n={n_windows}/{total_windows} windows)")
-                else:
-                    print(f"  {stat:20s}: No valid values")
-            else:
+            var_names = stat_map.get(stat)
+            if var_names is None:
                 print(f"  {stat:20s}: Not calculated")
+                continue
+            
+            # Handle both single variable names and lists (for fu_li_d/f)
+            if isinstance(var_names, list):
+                # Print both folded and unfolded versions
+                for var_name in var_names:
+                    if var_name in result_dataset:
+                        values = result_dataset[var_name].values
+                        valid_mask = ~np.isnan(values)
+                        n_windows = np.sum(valid_mask)
+                        total_windows = len(values)
+                        
+                        if n_windows > 0:
+                            mean_val = np.mean(values[valid_mask])
+                            # Add suffix to distinguish folded vs unfolded
+                            suffix = " (folded)" if "_star" in var_name else " (unfolded)"
+                            print(f"  {stat + suffix:20s}: {mean_val:.6f} (n={n_windows}/{total_windows} windows)")
+                        else:
+                            suffix = " (folded)" if "_star" in var_name else " (unfolded)"
+                            print(f"  {stat + suffix:20s}: No valid values")
+            else:
+                # Single variable name
+                if var_names in result_dataset:
+                    # Calculate mean, excluding NaN values
+                    values = result_dataset[var_names].values
+                    valid_mask = ~np.isnan(values)
+                    n_windows = np.sum(valid_mask)
+                    total_windows = len(values)
+                    
+                    if n_windows > 0:
+                        mean_val = np.mean(values[valid_mask])
+                        print(f"  {stat:20s}: {mean_val:.6f} (n={n_windows}/{total_windows} windows)")
+                    else:
+                        print(f"  {stat:20s}: No valid values")
+                else:
+                    print(f"  {stat:20s}: Not calculated")
         
         print("=" * 50)
     
@@ -1776,9 +1807,34 @@ class GenomicDataset:
                     region_data['window_contig'] = region_stats.window_contig.values
                 
                 # Add window statistics only
+                # Map stat names to actual variable names in dataset
+                stat_to_var = {
+                    'tajima_d': ['tajima_d'],
+                    'fu_li_d': ['fu_li_d_star', 'fu_li_d'],  # Both folded and unfolded
+                    'fu_li_f': ['fu_li_f_star', 'fu_li_f'],  # Both folded and unfolded
+                    'fu_li_d_unfolded': ['fu_li_d'],
+                    'fu_li_f_unfolded': ['fu_li_f'],
+                    'zeng_e': ['zeng_e'],
+                    'fay_wu_h': ['fay_wu_h'],
+                    'theta_pi': ['theta_pi'],
+                    'theta_w': ['theta_w'],
+                    'theta_h': ['theta_h'],
+                    'theta_l': ['theta_l'],
+                    'ld_d': ['mean_D'],
+                    'ld_dprime': ['mean_D_prime'],
+                    'ld_r2': ['mean_r_squared'],
+                    'haplotype_diversity': ['haplotype_diversity'],
+                    'garud_h1': ['garud_h1'],
+                    'garud_h12': ['garud_h12'],
+                    'garud_h123': ['garud_h123'],
+                    'garud_h2_h1': ['garud_h2_h1']
+                }
+                
                 for stat in stats:
-                    if stat in region_stats.data_vars:
-                        region_data[stat] = region_stats[stat].values
+                    var_names = stat_to_var.get(stat, [stat])
+                    for var_name in var_names:
+                        if var_name in region_stats.data_vars:
+                            region_data[var_name] = region_stats[var_name].values
                 
                 # Add n_variants if present
                 if 'n_variants' in region_stats.data_vars:
