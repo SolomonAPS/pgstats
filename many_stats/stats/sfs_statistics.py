@@ -1084,12 +1084,8 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         if site_n > max_n:
             max_n = site_n
     
-    if max_n <= 1:
-        # No valid data, return zeros
-        result = ds.copy()
-        stat_name = "fu_li_d" if not folded else "fu_li_d_star"
-        result[stat_name] = (["variants"], np.zeros(n_variants))
-        return result
+    # Note: We no longer do early exit here - check window_max_n in the loop instead
+    # This ensures we return proper window-dimensioned results
     
     # Calculate harmonic numbers once using max_n
     a1 = calculate_a1(max_n)
@@ -1241,12 +1237,8 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         if site_n > max_n:
             max_n = site_n
     
-    if max_n <= 1:
-        # No valid data, return zeros
-        result = ds.copy()
-        stat_name = "fu_li_f" if not folded else "fu_li_f_star"
-        result[stat_name] = (["variants"], np.zeros(n_variants))
-        return result
+    # Note: We no longer do early exit here - check window_max_n in the loop instead
+    # This ensures we return proper window-dimensioned results
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1421,11 +1413,8 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         if site_n > max_n:
             max_n = site_n
     
-    if max_n <= 1:
-        # No valid data, return zeros
-        result = ds.copy()
-        result["zeng_e"] = (["variants"], np.zeros(n_variants))
-        return result
+    # Note: We no longer do early exit here - check window_max_n in the loop instead
+    # This ensures we return proper window-dimensioned results
     
     # Calculate harmonic numbers once using max_n
     a1 = calculate_a1(max_n)
@@ -1653,11 +1642,8 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     n = np.sum(variant_matrix != -1, axis=1)
     max_n = np.max(n)
     
-    if max_n <= 1:
-        # No valid data, return zeros
-        result = ds.copy()
-        result["fay_wu_h"] = (["variants"], np.zeros(n_variants))
-        return result
+    # Note: We no longer do early exit here - check window_max_n in the loop instead
+    # This ensures we return proper window-dimensioned results
     
     # Calculate harmonic numbers once using max_n
     a1 = calculate_a1(max_n)
