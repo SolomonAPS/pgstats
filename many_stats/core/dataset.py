@@ -23,6 +23,7 @@ from many_stats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
     theta_pi, theta_w, theta_h, theta_l, fay_wu_h
 )
+from many_stats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from many_stats.stats.ld_statistics import (
     calculate_ld_matrix, calculate_windowed_ld
 )
@@ -1000,6 +1001,20 @@ class GenomicDataset:
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
+            elif stat == 'haplotype_diversity':
+                stat_ds = haplotype_diversity(self.windowed_dataset)
+                result_dataset = result_dataset.merge(stat_ds)
+            elif stat in ['garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1']:
+                # Calculate all Garud H statistics at once if any are requested
+                if not hasattr(self, '_cached_garud_stats'):
+                    self._cached_garud_stats = garud_h_statistics(self.windowed_dataset)
+                
+                # Extract the requested statistic
+                stat_ds = xr.Dataset({
+                    stat: self._cached_garud_stats[stat]
+                }, coords=self._cached_garud_stats.coords)
+                
+                result_dataset = result_dataset.merge(stat_ds)
         
         # Note: Callable sites are now handled by setting non-callable sites to -1
         # sgkit's statistics will automatically account for missing data

@@ -421,12 +421,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
     positions = ds.variant_position.values
     
     if enable_profiling:
-        print(f"[DEBUG] Checking dataset...", flush=True)
-        print(f"[DEBUG] Dataset dimensions: {dict(ds.sizes)}", flush=True)
-        print(f"[DEBUG] Dataset coordinates: {list(ds.coords)}", flush=True)
-        print(f"[DEBUG] Dataset data vars: {list(ds.data_vars)}", flush=True)
-        print(f"[DEBUG] Number of variants: {len(positions)}", flush=True)
-        print(f"[DEBUG] Position range: {np.min(positions)}-{np.max(positions)}", flush=True)
     
     # Verify windows exist
     required_vars = ['windows', 'window_start_idx', 'window_stop_idx']
@@ -440,14 +434,9 @@ def calculate_windowed_ld(ds: xr.Dataset,
     n_windows = len(ds.windows)
     
     if enable_profiling:
-        print(f"[DEBUG] Using {n_windows} windows", flush=True)
-        print(f"[DEBUG] Window start indices: {window_starts[:5]}... (first 5)", flush=True)
-        print(f"[DEBUG] Window stop indices: {window_stops[:5]}... (first 5)", flush=True)
-        print(f"[DEBUG] Window positions:", flush=True)
         for i in range(min(5, n_windows)):
             start_pos = positions[window_starts[i]]
             stop_pos = positions[window_stops[i]-1]  # -1 because stop is exclusive
-            print(f"[DEBUG]   Window {i}: {start_pos}-{stop_pos} (indices {window_starts[i]}-{window_stops[i]})", flush=True)
     
     # Initialize arrays for all windows
     n_variants_per_window = np.zeros(n_windows, dtype=np.int32)
@@ -459,8 +448,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
     mean_distance = np.full(n_windows, np.nan)
     
     if enable_profiling:
-        print(f"[DEBUG] Starting LD calculation for {n_windows} windows", flush=True)
-        print(f"[DEBUG] Input dataset dimensions: {ds.dims}", flush=True)
         import time
         start_time = time.time()
     
@@ -469,16 +456,12 @@ def calculate_windowed_ld(ds: xr.Dataset,
         window_end_pos = window_stops[w_idx]
         
         if enable_profiling:
-            print(f"[DEBUG] Window {w_idx}: start_pos={window_start_pos}, end_pos={window_end_pos}", flush=True)
         
         # Get variants in this window using indices
         window_variants = np.arange(window_starts[w_idx], window_stops[w_idx])
         
         if enable_profiling:
-            print(f"[DEBUG] Window {w_idx}: found {len(window_variants)} variants", flush=True)
             if len(window_variants) > 0:
-                print(f"[DEBUG] Window {w_idx}: variant indices {window_variants[0]}-{window_variants[-1]}", flush=True)
-                print(f"[DEBUG] Window {w_idx}: variant positions {positions[window_variants[0]]}-{positions[window_variants[-1]]}", flush=True)
         
         # Store number of variants even if < 2
         n_variants_per_window[w_idx] = len(window_variants)
@@ -531,40 +514,16 @@ def calculate_windowed_ld(ds: xr.Dataset,
         elapsed = time.time() - start_time
         print(f"[Timing] LD calculation completed in {elapsed:.2f}s", flush=True)
         n_valid = np.sum(~np.isnan(mean_D))
-        print(f"[DEBUG] Processed {n_valid} windows with valid LD statistics", flush=True)
     
     if enable_profiling:
-        print(f"[DEBUG] Creating LD result dataset...", flush=True)
-        print(f"[DEBUG] Input dataset windows dimension: {ds.sizes.get('windows', 'not found')}", flush=True)
-        print(f"[DEBUG] Number of windows to create: {n_windows}", flush=True)
-        print(f"[DEBUG] Number of windows with valid LD stats: {np.sum(~np.isnan(mean_D))}", flush=True)
-        print(f"[DEBUG] Window starts shape: {window_starts.shape}", flush=True)
-        print(f"[DEBUG] Window stops shape: {window_stops.shape}", flush=True)
-        print(f"[DEBUG] n_variants_per_window shape: {n_variants_per_window.shape}", flush=True)
-        print(f"[DEBUG] mean_D shape: {mean_D.shape}", flush=True)
     
     # Create result dataset with same number of windows as input
     result = xr.Dataset()
     
     if enable_profiling:
-        print(f"[DEBUG] Creating LD result dataset...", flush=True)
-        print(f"[DEBUG] Input dataset:", flush=True)
-        print(f"[DEBUG]   Dimensions: {dict(ds.sizes)}", flush=True)
-        print(f"[DEBUG]   Coordinates: {list(ds.coords)}", flush=True)
-        print(f"[DEBUG]   Data vars: {list(ds.data_vars)}", flush=True)
-        print(f"[DEBUG] LD statistics:", flush=True)
-        print(f"[DEBUG]   n_variants shape: {n_variants_per_window.shape}", flush=True)
-        print(f"[DEBUG]   mean_D shape: {mean_D.shape}", flush=True)
-        print(f"[DEBUG]   mean_D_prime shape: {mean_D_prime.shape}", flush=True)
-        print(f"[DEBUG]   mean_r_squared shape: {mean_r_squared.shape}", flush=True)
-        print(f"[DEBUG]   max_r_squared shape: {max_r_squared.shape}", flush=True)
-        print(f"[DEBUG]   mean_distance shape: {mean_distance.shape}", flush=True)
     
     # Copy window coordinates from input
     if enable_profiling:
-        print(f"[DEBUG] Using window coordinates from input dataset", flush=True)
-        print(f"[DEBUG]   windows shape: {ds.windows.shape}", flush=True)
-        print(f"[DEBUG]   window_contig shape: {ds.window_contig.shape}", flush=True)
     
     result = result.assign_coords({
         'windows': ds.windows
@@ -579,9 +538,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
         result = result.assign({'window_stop': ds.window_stop})
     
     if enable_profiling:
-        print(f"[DEBUG] Result dataset after coords:", flush=True)
-        print(f"[DEBUG]   Dimensions: {dict(result.sizes)}", flush=True)
-        print(f"[DEBUG]   Coordinates: {list(result.coords)}", flush=True)
     
     # Add data variables with WINDOWS dimension
     result = result.assign({
@@ -595,17 +551,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
     })
     
     if enable_profiling:
-        print(f"[DEBUG] Final result dataset:", flush=True)
-        print(f"[DEBUG]   Dimensions: {dict(result.sizes)}", flush=True)
-        print(f"[DEBUG]   Coordinates: {list(result.coords)}", flush=True)
-        print(f"[DEBUG]   Data vars: {list(result.data_vars)}", flush=True)
-        print(f"[DEBUG]   n_variants range: {result.n_variants.values.min()}-{result.n_variants.values.max()}", flush=True)
-        print(f"[DEBUG]   n_pairs range: {result.n_pairs.values.min()}-{result.n_pairs.values.max()}", flush=True)
-        print(f"[DEBUG]   mean_D range: {np.nanmin(result.mean_D.values)}-{np.nanmax(result.mean_D.values)}", flush=True)
-        print(f"[DEBUG]   mean_D_prime range: {np.nanmin(result.mean_D_prime.values)}-{np.nanmax(result.mean_D_prime.values)}", flush=True)
-        print(f"[DEBUG]   mean_r_squared range: {np.nanmin(result.mean_r_squared.values)}-{np.nanmax(result.mean_r_squared.values)}", flush=True)
-        print(f"[DEBUG]   max_r_squared range: {np.nanmin(result.max_r_squared.values)}-{np.nanmax(result.max_r_squared.values)}", flush=True)
-        print(f"[DEBUG]   mean_distance range: {np.nanmin(result.mean_distance.values)}-{np.nanmax(result.mean_distance.values)}", flush=True)
     
     return result
 
@@ -627,7 +572,6 @@ def ld_d(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_profiling:
         Dataset with D values
     """
     if enable_profiling:
-        print(f"[DEBUG] Computing LD D statistic...", flush=True)
         import time
         start_time = time.time()
     
@@ -653,7 +597,6 @@ def ld_d_prime(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_prof
         Dataset with D' values
     """
     if enable_profiling:
-        print(f"[DEBUG] Computing LD D' statistic...", flush=True)
         import time
         start_time = time.time()
     
@@ -679,7 +622,6 @@ def ld_r_squared(ds: xr.Dataset, call_genotype: str = "call_genotype", enable_pr
         Dataset with r² values
     """
     if enable_profiling:
-        print(f"[DEBUG] Computing LD r² statistic...", flush=True)
         import time
         start_time = time.time()
     
@@ -714,7 +656,6 @@ def omega_statistic(ds: xr.Dataset,
         Dataset with omega statistic value
     """
     if enable_profiling:
-        print(f"[DEBUG] Computing omega statistic...", flush=True)
         import time
         start_time = time.time()
     
