@@ -921,7 +921,7 @@ class GenomicDataset:
             
             if stat == 'tajima_d':
                 stat_ds = tajima_d(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
                 
                 # Print timing
                 if self.enable_profiling:
@@ -929,19 +929,19 @@ class GenomicDataset:
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
                 stat_ds = theta_pi(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_w', 'watterson_theta']:
                 stat_ds = theta_w(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat in ['theta_h', 'fay_wu_theta']:
                 stat_ds = theta_h(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat == 'theta_l':
                 stat_ds = theta_l(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat == 'fu_li_d':
                 # Calculate both folded (D*) and unfolded (D) versions
                 stat_ds_folded = fu_li_d(self.windowed_dataset, folded=True)
@@ -964,7 +964,7 @@ class GenomicDataset:
                 stat_ds = zeng_e(self.windowed_dataset)
                 print(f"DEBUG: zeng_e stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
                 print(f"DEBUG: zeng_e first 3 values: {stat_ds['zeng_e'].values[:3]}", flush=True)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
                 print(f"DEBUG: After merge, result_dataset has zeng_e: {'zeng_e' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
@@ -974,7 +974,7 @@ class GenomicDataset:
                 stat_ds = fay_wu_h(self.windowed_dataset)
                 print(f"DEBUG: fay_wu_h stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
                 print(f"DEBUG: fay_wu_h first 3 values: {stat_ds['fay_wu_h'].values[:3]}", flush=True)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
                 print(f"DEBUG: After merge, result_dataset has fay_wu_h: {'fay_wu_h' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
@@ -1019,14 +1019,14 @@ class GenomicDataset:
                         var_name: self._cached_ld_stats[var_name]
                     }, coords=self._cached_ld_stats.coords)
                     
-                    result_dataset = result_dataset.merge(stat_ds)
+                    result_dataset = result_dataset.merge(stat_ds, compat='override')
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'haplotype_diversity':
                 stat_ds = haplotype_diversity(self.windowed_dataset)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat in ['garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1']:
                 # Calculate all Garud H statistics at once if any are requested
                 if not hasattr(self, '_cached_garud_stats'):
@@ -1037,12 +1037,12 @@ class GenomicDataset:
                     stat: self._cached_garud_stats[stat]
                 }, coords=self._cached_garud_stats.coords)
                 
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat == 'omega_statistic':
                 stat_ds = omega_statistic(self.windowed_dataset, enable_profiling=self.enable_profiling)
                 print(f"DEBUG: omega_statistic stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
                 print(f"DEBUG: omega_statistic first 3 values: {stat_ds['omega_statistic'].values[:3]}", flush=True)
-                result_dataset = result_dataset.merge(stat_ds)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
                 print(f"DEBUG: After merge, result_dataset has omega_statistic: {'omega_statistic' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
