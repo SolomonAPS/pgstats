@@ -1064,8 +1064,10 @@ class GenomicDataset:
         # sgkit's statistics will automatically account for missing data
         
         # Normalize theta estimators by callable sites
+        print(f"DEBUG: About to normalize theta by callable sites, result_dataset has {len(result_dataset.windows)} windows", flush=True)
         result_dataset_before_norm = result_dataset.copy()
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
+        print(f"DEBUG: Finished normalizing theta by callable sites", flush=True)
         
         # Now filter out windows where LD statistics failed to calculate
         # (min_variants filtering already done before stat calculation)
@@ -1217,13 +1219,16 @@ class GenomicDataset:
         Returns:
             Dataset with normalized theta estimators
         """
+        print(f"DEBUG: _normalize_theta_by_callable_sites called with {len(window_stats.windows)} windows", flush=True)
         result = window_stats.copy()
         
         # Use vectorized batch calculation if BED file available
         if hasattr(self, 'bed_gr') and self.bed_gr is not None and self.callable_config.bed_file:
+            print(f"DEBUG: Using batch callable sites calculation", flush=True)
             callable_sites_per_window = self._calculate_callable_lengths_batch(window_stats)
         else:
             # Fall back to per-window calculation (no BED file or old method)
+            print(f"DEBUG: Using per-window callable sites calculation (no BED or fallback)", flush=True)
             callable_sites_per_window = self._calculate_callable_lengths_per_window(window_stats)
         
         callable_sites_per_window = np.array(callable_sites_per_window)
@@ -1241,10 +1246,20 @@ class GenomicDataset:
         
         for stat in theta_stats:
             if stat in result.data_vars:
+                # Debug: Check values before normalization
+                if stat == 'theta_pi':
+                    print(f"DEBUG theta normalization: First 3 windows before normalization:", flush=True)
+                    print(f"  theta_pi values: {result[stat].values[:3]}", flush=True)
+                    print(f"  callable_sites: {callable_sites_per_window[:3]}", flush=True)
+                
                 # Normalize each window's values by its callable sites
                 for window_idx in range(num_windows):
                     if callable_sites_per_window[window_idx] > 0:
                         result[stat].values[window_idx] /= callable_sites_per_window[window_idx]
+                
+                # Debug: Check values after normalization
+                if stat == 'theta_pi':
+                    print(f"  After normalization: {result[stat].values[:3]}", flush=True)
         
         return result
     

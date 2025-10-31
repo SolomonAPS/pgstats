@@ -18,10 +18,21 @@ def plot_distributions(input_file, output_file=None):
     
     # Read data
     print(f"Reading {input_file}...")
-    df = pd.read_csv(input_file, sep='\t' if input_file.endswith('.tsv') else ',')
+    # Auto-detect separator by reading first line
+    with open(input_file, 'r') as f:
+        first_line = f.readline()
+    
+    # Check which delimiter is used
+    if '\t' in first_line:
+        sep = '\t'
+    else:
+        sep = ','
+    
+    df = pd.read_csv(input_file, sep=sep)
     
     # Identify statistic columns (exclude metadata columns)
-    metadata_cols = ['contig', 'window_start', 'window_stop', 'n_variants', 'n_segregating_sites']
+    metadata_cols = ['region_contig', 'region_start', 'region_end', 
+                     'window_start', 'window_stop', 'window_contig', 'n_variants']
     stat_cols = [col for col in df.columns if col not in metadata_cols]
     
     print(f"Found {len(stat_cols)} statistics to plot")
@@ -112,11 +123,14 @@ if __name__ == '__main__':
         sys.exit(1)
     
     input_file = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 else None
+    output_file = None
     
     # Handle --output flag
-    if len(sys.argv) > 3 and sys.argv[2] == '--output':
+    if len(sys.argv) >= 4 and sys.argv[2] == '--output':
         output_file = sys.argv[3]
+    elif len(sys.argv) == 3:
+        # Assume second arg is output file if no --output flag
+        output_file = sys.argv[2]
     
     if not Path(input_file).exists():
         print(f"Error: File not found: {input_file}")
