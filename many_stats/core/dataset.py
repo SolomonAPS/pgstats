@@ -1256,6 +1256,9 @@ class GenomicDataset:
                 for window_idx in range(num_windows):
                     if callable_sites_per_window[window_idx] > 0:
                         result[stat].values[window_idx] /= callable_sites_per_window[window_idx]
+                    else:
+                        # If 0 callable sites, set to NaN (window is entirely non-callable)
+                        result[stat].values[window_idx] = np.nan
                 
                 # Debug: Check values after normalization
                 if stat == 'theta_pi':
