@@ -1289,8 +1289,10 @@ class GenomicDataset:
         window_contigs = []
         
         for window_idx in range(num_windows):
-            window_start_idx = window_stats.window_start.values[window_idx]
-            window_stop_idx = window_stats.window_stop.values[window_idx]
+            # Use window_start_idx and window_stop_idx (variant array indices)
+            # NOT window_start/window_stop (which are genomic positions after reassignment)
+            window_start_idx = window_stats.window_start_idx.values[window_idx]
+            window_stop_idx = window_stats.window_stop_idx.values[window_idx]
             
             if window_start_idx < len(positions) and window_stop_idx > 0:
                 window_start_pos = positions[window_start_idx]
