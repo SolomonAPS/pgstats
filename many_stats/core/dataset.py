@@ -1389,6 +1389,11 @@ class GenomicDataset:
                     masked_length += overlap_end - overlap_start
                 
                 callable_length = window_length - masked_length
+                
+                # Debug first few windows
+                if window_idx < 3:
+                    print(f"DEBUG Window {window_idx}: length={window_length}, masked={masked_length}, callable={callable_length}, overlaps={len(window_overlaps)}", flush=True)
+                
                 callable_lengths.append(max(1, callable_length))
             
             if self.enable_profiling:
