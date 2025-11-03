@@ -1290,6 +1290,8 @@ class GenomicDataset:
         print(f"  Dataset contigs: {contig_names}", flush=True)
         print(f"  N variants in dataset: {len(positions)}", flush=True)
         print(f"  Variant position range: {positions.min()}-{positions.max()}", flush=True)
+        print(f"  Variant contig indices (first 5): {contigs[:5]}", flush=True)
+        print(f"  Unique contig indices: {np.unique(contigs)}", flush=True)
         
         # Convert window indices to genomic positions
         window_start_positions = []
