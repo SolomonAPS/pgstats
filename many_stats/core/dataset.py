@@ -1406,6 +1406,10 @@ class GenomicDataset:
                 # Debug first few windows
                 if window_idx < 3:
                     print(f"DEBUG Window {window_idx}: length={window_length}, masked={masked_length}, callable={callable_length}, overlaps={len(window_overlaps)}", flush=True)
+                    if len(window_overlaps) > 0:
+                        print(f"  First few overlapping BED regions:", flush=True)
+                        for idx, row in window_overlaps.head(3).iterrows():
+                            print(f"    BED: [{row['Start']}, {row['End']}), overlap in window: [{row['Start']}, {row['End']})", flush=True)
                 
                 callable_lengths.append(max(1, callable_length))
             
