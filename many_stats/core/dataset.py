@@ -1334,6 +1334,14 @@ class GenomicDataset:
         bed_df = self.bed_gr.df.copy()
         
         if self.callable_config.bed_format == "non_callable":
+            # Use PyRanges for fast overlap calculation
+            print(f"DEBUG: Calculating callable sites using PyRanges overlap for {num_windows} windows", flush=True)
+            
+            # Find overlaps between windows and BED regions
+            overlaps = windows_gr.overlap(self.bed_gr)
+            
+            print(f"DEBUG: Found {len(overlaps)} window-BED overlaps", flush=True)
+            
             # Calculate masked length per window
             callable_lengths = []
             
@@ -1346,16 +1354,16 @@ class GenomicDataset:
                 window_end = window_end_positions[window_idx]
                 window_length = window_end - window_start
                 
-                # Filter BED regions for this contig
-                contig_bed = bed_df[bed_df['Chromosome'] == window_contigs[window_idx]]
+                # Get overlaps for this specific window
+                window_overlaps = overlaps.df[overlaps.df['window_idx'] == window_idx]
                 
-                # Calculate overlap
+                # Calculate total masked length
                 masked_length = 0
-                for _, row in contig_bed.iterrows():
-                    overlap_start = max(window_start, row['Start'])
-                    overlap_end = min(window_end, row['End'])
-                    if overlap_start < overlap_end:
-                        masked_length += overlap_end - overlap_start
+                for _, row in window_overlaps.iterrows():
+                    # PyRanges overlap returns the intersection coordinates
+                    overlap_start = row['Start']
+                    overlap_end = row['End']
+                    masked_length += overlap_end - overlap_start
                 
                 callable_length = window_length - masked_length
                 callable_lengths.append(max(1, callable_length))
@@ -1367,6 +1375,14 @@ class GenomicDataset:
             return np.array(callable_lengths)
             
         elif self.callable_config.bed_format == "callable":
+            # Use PyRanges for fast overlap calculation
+            print(f"DEBUG: Calculating callable sites using PyRanges overlap for {num_windows} windows", flush=True)
+            
+            # Find overlaps between windows and BED regions
+            overlaps = windows_gr.overlap(self.bed_gr)
+            
+            print(f"DEBUG: Found {len(overlaps)} window-BED overlaps", flush=True)
+            
             # Calculate callable length per window
             callable_lengths = []
             
@@ -1375,19 +1391,16 @@ class GenomicDataset:
                     callable_lengths.append(0)
                     continue
                 
-                window_start = window_start_positions[window_idx]
-                window_end = window_end_positions[window_idx]
+                # Get overlaps for this specific window
+                window_overlaps = overlaps.df[overlaps.df['window_idx'] == window_idx]
                 
-                # Filter BED regions for this contig
-                contig_bed = bed_df[bed_df['Chromosome'] == window_contigs[window_idx]]
-                
-                # Calculate overlap
+                # Calculate total callable length (sum of all overlapping callable regions)
                 callable_length = 0
-                for _, row in contig_bed.iterrows():
-                    overlap_start = max(window_start, row['Start'])
-                    overlap_end = min(window_end, row['End'])
-                    if overlap_start < overlap_end:
-                        callable_length += overlap_end - overlap_start
+                for _, row in window_overlaps.iterrows():
+                    # PyRanges overlap returns the intersection coordinates
+                    overlap_start = row['Start']
+                    overlap_end = row['End']
+                    callable_length += overlap_end - overlap_start
                 
                 callable_lengths.append(max(1, callable_length))
             
