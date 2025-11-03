@@ -1291,9 +1291,9 @@ class GenomicDataset:
         window_end_positions = []
         window_contigs = []
         
-        # For callable sites, we need the ACTUAL genomic window boundaries,
-        # not just the positions of variants within the window.
-        # sgkit creates windows starting from the minimum position in the dataset
+        # For callable sites, we need the ACTUAL genomic window boundaries.
+        # sgkit window_by_position uses: window_start = N * step + offset
+        # where N is window index and positions are absolute genomic coordinates
         
         # Try to get the actual window boundaries
         if hasattr(self, 'window_config') and self.window_config is not None:
@@ -1304,13 +1304,7 @@ class GenomicDataset:
             window_size = 1000
             step_size = 1000
         
-        # Get the starting position - sgkit windows from minimum variant position
-        if len(positions) > 0:
-            base_position = positions.min()
-        else:
-            base_position = 0
-        
-        print(f"DEBUG: base_position={base_position}, window_size={window_size}, step_size={step_size}", flush=True)
+        print(f"DEBUG: window_size={window_size}, step_size={step_size}", flush=True)
         
         for window_idx in range(num_windows):
             # Use window_start_idx and window_stop_idx (variant array indices)
@@ -1318,13 +1312,16 @@ class GenomicDataset:
             window_stop_idx = window_stats.window_stop_idx.values[window_idx]
             
             if window_start_idx < len(positions) and window_stop_idx > 0:
+                # Get first variant position in this window to infer window boundaries
+                first_variant_pos = positions[window_start_idx]
+                
                 # Determine contig for this window
                 contig_idx = contigs[window_start_idx]
                 contig_name = contig_names[contig_idx]
                 
-                # Calculate actual genomic window boundaries
-                # Windows start at base_position and increment by step_size
-                window_start_pos = base_position + (window_idx * step_size)
+                # sgkit aligns windows to step boundaries with offset=0 (default)
+                # Find which step-aligned window this variant falls into
+                window_start_pos = (first_variant_pos // step_size) * step_size
                 window_end_pos = window_start_pos + window_size
                 
                 window_start_positions.append(window_start_pos)
