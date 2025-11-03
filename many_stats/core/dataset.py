@@ -1293,9 +1293,9 @@ class GenomicDataset:
         
         # For callable sites, we need the ACTUAL genomic window boundaries,
         # not just the positions of variants within the window.
-        # Windows are created by sgkit with fixed size (e.g. 1000bp)
+        # sgkit creates windows starting from the minimum position in the dataset
         
-        # Try to get the actual window boundaries if they exist in the dataset
+        # Try to get the actual window boundaries
         if hasattr(self, 'window_config') and self.window_config is not None:
             window_size = self.window_config.window_size
             step_size = self.window_config.step_size or window_size
@@ -1304,24 +1304,27 @@ class GenomicDataset:
             window_size = 1000
             step_size = 1000
         
+        # Get the starting position - sgkit windows from minimum variant position
+        if len(positions) > 0:
+            base_position = positions.min()
+        else:
+            base_position = 0
+        
+        print(f"DEBUG: base_position={base_position}, window_size={window_size}, step_size={step_size}", flush=True)
+        
         for window_idx in range(num_windows):
             # Use window_start_idx and window_stop_idx (variant array indices)
-            # NOT window_start/window_stop (which are genomic positions after reassignment)
             window_start_idx = window_stats.window_start_idx.values[window_idx]
             window_stop_idx = window_stats.window_stop_idx.values[window_idx]
             
             if window_start_idx < len(positions) and window_stop_idx > 0:
-                # Get the position of the first variant in this window
-                first_variant_pos = positions[window_start_idx]
-                
                 # Determine contig for this window
                 contig_idx = contigs[window_start_idx]
                 contig_name = contig_names[contig_idx]
                 
                 # Calculate actual genomic window boundaries
-                # Windows are aligned to step_size boundaries starting from first variant
-                # Round down to nearest step_size boundary
-                window_start_pos = (first_variant_pos // step_size) * step_size
+                # Windows start at base_position and increment by step_size
+                window_start_pos = base_position + (window_idx * step_size)
                 window_end_pos = window_start_pos + window_size
                 
                 window_start_positions.append(window_start_pos)
