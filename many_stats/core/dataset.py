@@ -1286,6 +1286,11 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
+        print(f"DEBUG: Dataset info for callable sites calculation:", flush=True)
+        print(f"  Dataset contigs: {contig_names}", flush=True)
+        print(f"  N variants in dataset: {len(positions)}", flush=True)
+        print(f"  Variant position range: {positions.min()}-{positions.max()}", flush=True)
+        
         # Convert window indices to genomic positions
         window_start_positions = []
         window_end_positions = []
