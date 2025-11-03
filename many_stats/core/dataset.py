@@ -1312,8 +1312,9 @@ class GenomicDataset:
             window_stop_idx = window_stats.window_stop_idx.values[window_idx]
             
             if window_start_idx < len(positions) and window_stop_idx > 0:
-                # Get first variant position in this window to infer window boundaries
+                # Get first and last variant positions in this window
                 first_variant_pos = positions[window_start_idx]
+                last_variant_pos = positions[window_stop_idx - 1] if window_stop_idx <= len(positions) else positions[-1]
                 
                 # Determine contig for this window
                 contig_idx = contigs[window_start_idx]
@@ -1323,6 +1324,18 @@ class GenomicDataset:
                 # Find which step-aligned window this variant falls into
                 window_start_pos = (first_variant_pos // step_size) * step_size
                 window_end_pos = window_start_pos + window_size
+                
+                # Debug first few windows to verify inference
+                if window_idx < 3:
+                    n_variants_in_window = window_stop_idx - window_start_idx
+                    print(f"DEBUG Window {window_idx}:", flush=True)
+                    print(f"  Variant indices: [{window_start_idx}, {window_stop_idx})", flush=True)
+                    print(f"  N variants: {n_variants_in_window}", flush=True)
+                    print(f"  First variant pos: {first_variant_pos}", flush=True)
+                    print(f"  Last variant pos: {last_variant_pos}", flush=True)
+                    print(f"  Inferred window: [{window_start_pos}, {window_end_pos})", flush=True)
+                    print(f"  Check: first in window? {window_start_pos <= first_variant_pos < window_end_pos}", flush=True)
+                    print(f"  Check: last in window? {window_start_pos <= last_variant_pos < window_end_pos}", flush=True)
                 
                 window_start_positions.append(window_start_pos)
                 window_end_positions.append(window_end_pos)
