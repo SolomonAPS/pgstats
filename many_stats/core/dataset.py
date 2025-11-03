@@ -1291,6 +1291,19 @@ class GenomicDataset:
         window_end_positions = []
         window_contigs = []
         
+        # For callable sites, we need the ACTUAL genomic window boundaries,
+        # not just the positions of variants within the window.
+        # Windows are created by sgkit with fixed size (e.g. 1000bp)
+        
+        # Try to get the actual window boundaries if they exist in the dataset
+        if hasattr(self, 'window_config') and self.window_config is not None:
+            window_size = self.window_config.window_size
+            step_size = self.window_config.step_size or window_size
+        else:
+            # Fallback: estimate from first window
+            window_size = 1000
+            step_size = 1000
+        
         for window_idx in range(num_windows):
             # Use window_start_idx and window_stop_idx (variant array indices)
             # NOT window_start/window_stop (which are genomic positions after reassignment)
@@ -1298,13 +1311,18 @@ class GenomicDataset:
             window_stop_idx = window_stats.window_stop_idx.values[window_idx]
             
             if window_start_idx < len(positions) and window_stop_idx > 0:
-                window_start_pos = positions[window_start_idx]
-                window_end_pos = positions[window_stop_idx-1] if window_stop_idx-1 < len(positions) else positions[-1]
-                window_length = window_end_pos - window_start_pos + 1
+                # Get the position of the first variant in this window
+                first_variant_pos = positions[window_start_idx]
                 
                 # Determine contig for this window
                 contig_idx = contigs[window_start_idx]
                 contig_name = contig_names[contig_idx]
+                
+                # Calculate actual genomic window boundaries
+                # Windows are aligned to step_size boundaries starting from first variant
+                # Round down to nearest step_size boundary
+                window_start_pos = (first_variant_pos // step_size) * step_size
+                window_end_pos = window_start_pos + window_size
                 
                 window_start_positions.append(window_start_pos)
                 window_end_positions.append(window_end_pos)
@@ -1322,6 +1340,11 @@ class GenomicDataset:
             'End': window_end_positions,
             'window_idx': range(num_windows)
         })
+        
+        # Debug: Check window coordinates
+        print(f"DEBUG: First 3 windows:", flush=True)
+        for i in range(min(3, len(windows_df))):
+            print(f"  Window {i}: {windows_df.iloc[i]['Chromosome']} {windows_df.iloc[i]['Start']}-{windows_df.iloc[i]['End']} (length={windows_df.iloc[i]['End']-windows_df.iloc[i]['Start']})", flush=True)
         
         # Remove windows with None contig
         valid_windows = windows_df['Chromosome'].notna()
