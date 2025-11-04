@@ -357,6 +357,9 @@ def calculate_v_h(n: int, a1: float, a2: float) -> tuple[float, float]:
     Exact textbook formula:
     [(n-2) / 6(n-1)]θ + [(18n²)(3n+2)b_{n+1} - (88n³ + 9n² - 13n + 6) / 9n(n-1)²]θ²
     
+    CRITICAL: b_{n+1} here means the sum Σ(1/i²) for i=1 to n, NOT the b₂ formula!
+    This is b₁(n+1) in our notation: the harmonic sum of squares up to n.
+    
     Args:
         n: Sample size
         a1: a₁ value
@@ -365,8 +368,9 @@ def calculate_v_h(n: int, a1: float, a2: float) -> tuple[float, float]:
     Returns:
         tuple: (u_H, v_H) variance components
     """
-    # Calculate b_{n+1} for the formula
-    b_n_plus_1 = calculate_b2(n + 1)
+    # Calculate b_{n+1} = Σ(1/i²) for i=1 to n = b_n + 1/n²
+    # This is b₁(n+1) in our notation, NOT b₂(n+1)!
+    b_n_plus_1 = calculate_b1(n + 1)
     
     # u_H = (n-2) / 6(n-1)
     u_h = (n - 2.0) / (6.0 * (n - 1.0))
