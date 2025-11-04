@@ -256,6 +256,15 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
         for j in range(n_samples):
             dosage[i, j] = genotypes[i, j, :].sum()
     
+    # Calculate minor allele frequencies
+    # Following Kim & Nielsen (2004) and pylibseq: only consider SNPs with MAF > 1
+    mafs = np.zeros(n_variants)
+    for i in range(n_variants):
+        allele_count = dosage[i, :].sum()
+        total_alleles = n_samples * ploidy
+        maf = min(allele_count, total_alleles - allele_count)
+        mafs[i] = maf
+    
     # Calculate all pairwise r² values
     r_squared_matrix = np.full((n_variants, n_variants), np.nan)
     
@@ -270,14 +279,12 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
             r_squared_matrix[j, i] = r_squared
     
     # Iterate through each SNP as a potential breakpoint (excluding first and last)
-    # Note: pylibseq filters by MAF > 1, but this can be too restrictive for small windows
-    # We calculate omega for all breakpoints to maximize sensitivity
+    # Following Kim & Nielsen (2004) and pylibseq: only consider SNPs with MAF > 1
     max_omega = -np.inf
     
     for breakpoint in range(1, n_variants - 1):  # positions 1 to S-2
-        # Optional: filter by MAF > 1 to match pylibseq (currently disabled)
-        # if mafs[breakpoint] <= 1:
-        #     continue
+        if mafs[breakpoint] <= 1:
+            continue
         
         # L = variants at positions [0, breakpoint] (inclusive)
         # R = variants at positions [breakpoint+1, n_variants-1] (inclusive)
