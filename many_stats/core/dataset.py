@@ -1468,8 +1468,13 @@ class GenomicDataset:
                     print(f"DEBUG Window {window_idx}: length={window_length}, masked={masked_length}, callable={callable_length}, overlaps={len(window_overlaps)}", flush=True)
                     if len(window_overlaps) > 0:
                         print(f"  First few overlapping BED regions:", flush=True)
-                        for idx, row in window_overlaps.head(3).iterrows():
-                            print(f"    BED: [{row['Start']}, {row['End']}), overlap in window: [{row['Start']}, {row['End']})", flush=True)
+                        for idx, row in window_overlaps.head(5).iterrows():
+                            overlap_len = row['End'] - row['Start']
+                            print(f"    BED overlap: [{row['Start']}, {row['End']}) = {overlap_len}bp", flush=True)
+                        if len(window_overlaps) > 5:
+                            print(f"    ... and {len(window_overlaps) - 5} more overlaps", flush=True)
+                        total_from_overlaps = sum(row['End'] - row['Start'] for _, row in window_overlaps.iterrows())
+                        print(f"  Total masked from overlaps: {total_from_overlaps}bp", flush=True)
                 
                 callable_lengths.append(max(1, callable_length))
             
