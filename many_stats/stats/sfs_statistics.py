@@ -1345,8 +1345,9 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     Where:
     - θL = Zeng et al.'s theta emphasizing high-frequency sites
     - θw = Watterson's theta (segregating sites)
-    - Var(θL - θw) = [n/(2(n-1)) - 1/a₁]θ + [b₂ + 2(n/(n-1))²b₂ - 2(nb₂-n+1)/((n-1)a₁) - (3n+1)/(n-1)]θ²
-    - a₁ = Σ[i=1 to n-1] 1/i, b₂ = 2(n²+n+3)/(9n(n-1))
+    - Var(θL - θw) = [n/(2(n-1)) - 1/a₁]θ + [bₙ + 2(n/(n-1))²bₙ - 2(nbₙ-n+1)/((n-1)a₁) - (3n+1)/(n-1)]θ²
+    - a₁ = Σ[i=1 to n-1] 1/i (harmonic number)
+    - bₙ = Σ[i=1 to n-1] 1/i² (harmonic sum of squares)
     - n = sample size
     
     The E test is powerful for detecting selective sweeps and can persist longer
@@ -1415,18 +1416,19 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         
         # Calculate harmonic numbers for this window
         a1 = calculate_a1(window_max_n)
-        b2 = calculate_b2(window_max_n)
+        bn = calculate_b1(window_max_n)  # Use bₙ (harmonic sum), not b₂ (closed-form)
         
         # Pre-calculate variance components using window_max_n
         # From Walsh & Lynch 2018, Equation 9.28c (page 307)
+        # CRITICAL: The textbook uses bₙ (harmonic sum Σ(1/i²)), not b₂
         term1 = (window_max_n / (2.0 * (window_max_n - 1.0))) - (1.0 / a1)
-        term2 = b2 + 2.0 * (window_max_n / (window_max_n - 1.0)) ** 2 * b2
-        term2 -= 2.0 * (window_max_n * b2 - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
+        term2 = bn + 2.0 * (window_max_n / (window_max_n - 1.0)) ** 2 * bn
+        term2 -= 2.0 * (window_max_n * bn - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
         term2 -= (3.0 * window_max_n + 1.0) / (window_max_n - 1.0)
         
         # DEBUG: Print variance components for first window
         if w_idx == 0:
-            print(f"DEBUG zeng_e variance components: n={window_max_n}, a1={a1:.4f}, b2={b2:.4f}, term1={term1:.4f}, term2={term2:.4f}", flush=True)
+            print(f"DEBUG zeng_e variance components: n={window_max_n}, a1={a1:.4f}, bn={bn:.4f}, term1={term1:.4f}, term2={term2:.4f}", flush=True)
         
         # Get unfolded SFS for entire window
         sfs, n_max = get_unfolded_sfs(window_variant_matrix)
