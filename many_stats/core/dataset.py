@@ -377,6 +377,8 @@ class GenomicDataset:
             # VCF has "chr" prefix, BED doesn't - add to BED
             bed_df['chrom'] = 'chr' + bed_df['chrom'].astype(str)
         else:
+            # Chromosome names match convention
+            pass
         
         # Create PyRanges object from BED file
         # BED is 0-based, half-open [start, end)
