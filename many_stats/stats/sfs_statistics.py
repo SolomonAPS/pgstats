@@ -1427,10 +1427,13 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         
         # DEBUG: Check if theta values are zero
         if w_idx < 3:  # Only print for first few windows
-            print(f"DEBUG zeng_e window {w_idx}: S={S}, theta_l={theta_l_val}, theta_w={theta_w_val}, term1={term1}, term2={term2}", flush=True)
+            var_e_temp = term1 * S + term2 * S * S
+            print(f"DEBUG zeng_e window {w_idx}: S={S}, theta_l={theta_l_val}, theta_w={theta_w_val}, var_e={var_e_temp}", flush=True)
         
         # Calculate variance of E
-        var_e = term1 * theta_w_val + term2 * theta_w_val * theta_w_val
+        # Note: The variance formula uses S (segregating sites) as a proxy for theta
+        # From Walsh & Lynch 2018, Equation 9.28c: Var(E) = u_E*S + v_E*S²
+        var_e = term1 * S + term2 * S * S
         
         if var_e <= 0:
             if S == 1:
@@ -1632,12 +1635,13 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         pi = calculate_pi(window_variant_matrix)
         theta_h_val = calculate_theta_h(sfs, window_max_n)
         
+        # Calculate variance using window harmonic numbers
+        # From Walsh & Lynch 2018, Equation 9.27c: Var(H) = u_H*S + v_H*S(S-1)
+        var_h = u_h * S + v_h * S * (S - 1)
+        
         # DEBUG: Check if theta_h is zero
         if w_idx < 3:  # Only print for first few windows
-            print(f"DEBUG fay_wu_h window {w_idx}: S={S}, pi={pi}, theta_h={theta_h_val}, u_h={u_h}, v_h={v_h}", flush=True)
-        
-        # Calculate variance using window harmonic numbers
-        var_h = u_h * S + v_h * S * (S - 1)
+            print(f"DEBUG fay_wu_h window {w_idx}: S={S}, pi={pi}, theta_h={theta_h_val}, var_h={var_h}", flush=True)
         
         if var_h <= 0:
             if S == 1:
