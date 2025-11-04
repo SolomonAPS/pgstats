@@ -1000,13 +1000,9 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         pi = calculate_pi(window_variant_matrix)
         
         # Calculate variance using window_max_n
-        # From Walsh & Lynch 2018, page 301, Equation 9.21b:
-        # θ is replaced by S/a₁ and θ² is replaced by S(S-1)/(a₁² + b₁)
-        # From Equation 9.24a: Var(D) = c₁*θ + c₂*θ²
-        b1 = calculate_b1(window_max_n)
-        theta_for_var = S / a1
-        theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
-        var = c1 * theta_for_var + c2 * theta_sq_for_var
+        # From Walsh & Lynch 2018, Equation 9.24a (page 305):
+        # Var(D) = √(α_D*S + β_D*S²) where α_D = c₁, β_D = c₂
+        var = c1 * S + c2 * S * (S - 1)
         
         if var <= 0:
             tajima_d_values[w_idx] = np.nan
@@ -1138,13 +1134,9 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             numerator = S / a1 - singleton_count
         
         # Calculate variance using window_max_n
-        # From Walsh & Lynch 2018, page 301, Equation 9.21b:
-        # θ is replaced by S/a₁ and θ² is replaced by S(S-1)/(a₁² + b₁)
-        # From Equation 9.26b-c: Var(D*) = α*θ + β*θ²
-        b1 = calculate_b1(window_max_n)
-        theta_for_var = S / a1
-        theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
-        var = u_d_star * theta_for_var + v_d_star * theta_sq_for_var
+        # From Walsh & Lynch 2018, Equation 9.26a-b (page 305):
+        # Var(D*) = √(α*S + β*S(S-1))
+        var = u_d_star * S + v_d_star * S * (S - 1)
         
         if var <= 0:
             if S == 1:
@@ -1282,13 +1274,9 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             numerator = pi - singleton_count
         
         # Calculate variance using window harmonic numbers
-        # From Walsh & Lynch 2018, page 301, Equation 9.21b:
-        # θ is replaced by S/a₁ and θ² is replaced by S(S-1)/(a₁² + b₁)
-        # From Equation 9.26e-f: Var(F*) = α_F*θ + β_F*θ²
-        b1 = calculate_b1(window_max_n)
-        theta_for_var = S / a1
-        theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
-        var = u_f_star * theta_for_var + v_f_star * theta_sq_for_var
+        # From Walsh & Lynch 2018, Equation 9.26d-e (page 305):
+        # Var(F*) = √(α_F*S + β_F*S(S-1))
+        var = u_f_star * S + v_f_star * S * (S - 1)
         
         if var <= 0:
             if S == 1:
@@ -1452,9 +1440,10 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
             print(f"DEBUG zeng_e window {w_idx}: S={S}, theta_l={theta_l_val}, theta_w={theta_w_val}, var_e={var_e_temp}", flush=True)
         
         # Calculate variance of E
-        # From Walsh & Lynch 2018, page 301, Equation 9.21b:
-        # θ is replaced by S/a₁ and θ² is replaced by S(S-1)/(a₁² + b₁)
-        # From Equation 9.28c: Var(E) = u_E*θ + v_E*θ²
+        # From Walsh & Lynch 2018, Equation 9.28c (page 307):
+        # Var(θ_L - θ_W) uses scaled theta from Equation 9.21b (page 301):
+        # θ → S/a₁ and θ² → S(S-1)/(a₁² + b₁)
+        # This is DIFFERENT from Tajima's D which uses S directly
         b1 = calculate_b1(window_max_n)
         theta_for_var = S / a1
         theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
@@ -1661,9 +1650,10 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         theta_h_val = calculate_theta_h(sfs, window_max_n)
         
         # Calculate variance using window harmonic numbers
-        # From Walsh & Lynch 2018, page 301, Equation 9.21b:
-        # θ is replaced by S/a₁ and θ² is replaced by S(S-1)/(a₁² + b₁)
-        # From Equation 9.27c: Var(H) = u_H*θ + v_H*θ²
+        # From Walsh & Lynch 2018, Equation 9.27c (page 306):
+        # Var(θ_π - θ_H) uses scaled theta from Equation 9.21b (page 301):
+        # θ → S/a₁ and θ² → S(S-1)/(a₁² + b₁)
+        # This is DIFFERENT from Tajima's D which uses S directly
         b1 = calculate_b1(window_max_n)
         theta_for_var = S / a1
         theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
