@@ -1414,10 +1414,15 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         b2 = calculate_b2(window_max_n)
         
         # Pre-calculate variance components using window_max_n
+        # From Walsh & Lynch 2018, Equation 9.28c (page 307)
         term1 = (window_max_n / (2.0 * (window_max_n - 1.0))) - (1.0 / a1)
         term2 = b2 + 2.0 * (window_max_n / (window_max_n - 1.0)) ** 2 * b2
         term2 -= 2.0 * (window_max_n * b2 - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
         term2 -= (3.0 * window_max_n + 1.0) / (window_max_n - 1.0)
+        
+        # DEBUG: Print variance components for first window
+        if w_idx == 0:
+            print(f"DEBUG zeng_e variance components: n={window_max_n}, a1={a1:.4f}, b2={b2:.4f}, term1={term1:.4f}, term2={term2:.4f}", flush=True)
         
         # Get unfolded SFS for entire window
         sfs, n_max = get_unfolded_sfs(window_variant_matrix)
@@ -1637,6 +1642,10 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         a1 = calculate_a1(window_max_n)
         a2 = calculate_a2(window_max_n)
         u_h, v_h = calculate_v_h(window_max_n, a1, a2)
+        
+        # DEBUG: Print variance components for first window
+        if w_idx == 0:
+            print(f"DEBUG fay_wu_h variance components: n={window_max_n}, a1={a1:.4f}, a2={a2:.4f}, u_h={u_h:.4f}, v_h={v_h:.4f}", flush=True)
         
         # Get SFS for entire window
         sfs, n_max = get_unfolded_sfs(window_variant_matrix)
