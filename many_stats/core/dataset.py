@@ -267,10 +267,8 @@ class GenomicDataset:
         
         bed_df = bed_df.copy()
         if sample_bed_chr.startswith('chr') and not sample_vcf_chr.startswith('chr'):
-            print(f"Normalizing: Stripping 'chr' prefix from BED chromosomes", flush=True)
             bed_df['chrom'] = bed_df['chrom'].str.replace('^chr', '', regex=True)
         elif not sample_bed_chr.startswith('chr') and sample_vcf_chr.startswith('chr'):
-            print(f"Normalizing: Adding 'chr' prefix to BED chromosomes", flush=True)
             bed_df['chrom'] = 'chr' + bed_df['chrom'].astype(str)
         
         # Store BED data as PyRanges object
@@ -351,7 +349,7 @@ class GenomicDataset:
         Returns:
             Boolean array where True = callable, False = non-callable
         """
-        print(f"Processing {len(bed_df):,} BED regions with PyRanges...", flush=True)
+        print(f"Loading BED file ({len(bed_df):,} regions)...", flush=True)
         
         positions = self.dataset.variant_position.values
         contigs = self.dataset.variant_contig.values
@@ -363,8 +361,6 @@ class GenomicDataset:
         
         vcf_chroms = set(actual_contig_names)
         bed_chroms = set(bed_df['chrom'].astype(str).unique())
-        print(f"VCF chromosomes (first 5): {sorted(vcf_chroms)[:5]}", flush=True)
-        print(f"BED chromosomes (first 5): {sorted(bed_chroms)[:5]}", flush=True)
         
         # Normalize chromosome names if needed
         # Check if BED has "chr" prefix but VCF doesn't (or vice versa)
@@ -376,14 +372,11 @@ class GenomicDataset:
         
         if sample_bed_chr.startswith('chr') and not sample_vcf_chr.startswith('chr'):
             # BED has "chr" prefix, VCF doesn't - strip from BED
-            print(f"Normalizing: Stripping 'chr' prefix from BED chromosomes", flush=True)
             bed_df['chrom'] = bed_df['chrom'].str.replace('^chr', '', regex=True)
         elif not sample_bed_chr.startswith('chr') and sample_vcf_chr.startswith('chr'):
             # VCF has "chr" prefix, BED doesn't - add to BED
-            print(f"Normalizing: Adding 'chr' prefix to BED chromosomes", flush=True)
             bed_df['chrom'] = 'chr' + bed_df['chrom'].astype(str)
         else:
-            print(f"Chromosome names match convention", flush=True)
         
         # Create PyRanges object from BED file
         # BED is 0-based, half-open [start, end)
@@ -408,43 +401,20 @@ class GenomicDataset:
         # Create PyRanges object from variants
         variants_gr = pr.PyRanges(variants_df)
         
-        # Debug: Show sample data from both PyRanges
-        print(f"BED PyRanges sample (first 3 regions):", flush=True)
         print(f"  {bed_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
-        print(f"Variants PyRanges sample (first 3 variants):", flush=True)
         print(f"  {variants_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
         
         # Test a manual overlap check for debugging
-        bed_first = bed_gr.head(1).df.iloc[0]
-        var_first = variants_gr.head(1).df.iloc[0]
-        print(f"\nManual overlap test:", flush=True)
-        print(f"  First BED: [{bed_first['Start']}, {bed_first['End']}) on {bed_first['Chromosome']}", flush=True)
-        print(f"  First variant: [{var_first['Start']}, {var_first['End']}) on {var_first['Chromosome']}", flush=True)
-        overlaps = (bed_first['Start'] < var_first['End']) and (var_first['Start'] < bed_first['End']) and (bed_first['Chromosome'] == var_first['Chromosome'])
-        print(f"  Should overlap? {overlaps}", flush=True)
         
         # Check chromosome overlap and data types
-        bed_chrom_set = set(bed_gr.chromosomes)
-        var_chrom_set = set(variants_gr.chromosomes)
-        common_chroms = bed_chrom_set.intersection(var_chrom_set)
-        print(f"Chromosomes in common: {sorted(common_chroms)[:5]}", flush=True)
-        print(f"BED-only chromosomes: {sorted(bed_chrom_set - var_chrom_set)[:5]}", flush=True)
-        print(f"VCF-only chromosomes: {sorted(var_chrom_set - bed_chrom_set)[:5]}", flush=True)
         
         # Check data types
-        print(f"\nData types:", flush=True)
-        print(f"  BED Chromosome dtype: {bed_gr.df['Chromosome'].dtype}", flush=True)
-        print(f"  BED Start dtype: {bed_gr.df['Start'].dtype}", flush=True)
-        print(f"  Variant Chromosome dtype: {variants_gr.df['Chromosome'].dtype}", flush=True)
-        print(f"  Variant Start dtype: {variants_gr.df['Start'].dtype}", flush=True)
         
-        print(f"Finding overlaps with interval trees...", flush=True)
         
         # Find overlapping variants using PyRanges' efficient overlap detection
         # This uses NCLS (Nested Containment Lists) internally - very fast!
         overlapping_gr = variants_gr.overlap(bed_gr)
         
-        print(f"Found {len(overlapping_gr):,} overlapping variant-region pairs", flush=True)
         
         # Create boolean mask based on which variants overlap BED regions
         if self.callable_config.bed_format == "non_callable":
@@ -655,16 +625,11 @@ class GenomicDataset:
                     positions[-1] <= end
                 )
                 
-                print(f"DEBUG create_windows: len(positions)={len(positions)}, positions[0]={positions[0] if len(positions) > 0 else 'N/A'}, positions[-1]={positions[-1] if len(positions) > 0 else 'N/A'}", flush=True)
-                print(f"DEBUG create_windows: start={start}, end={end}, already_filtered={dataset_already_filtered}", flush=True)
-                
                 if dataset_already_filtered:
                     # Dataset is already filtered to this region, use it directly
                     region_dataset = self.dataset
-                    print(f"DEBUG: Using already-filtered dataset with {len(region_dataset.variants)} variants", flush=True)
                 else:
                     # Filter dataset to region
-                    print(f"DEBUG: Re-filtering dataset (this shouldn't happen in multi-region mode!)", flush=True)
                     region_dataset = self._filter_to_region(start, end)
                 
                 # Check if region has any variants
@@ -914,8 +879,6 @@ class GenomicDataset:
                 filtered_dataset = filtered_dataset.assign(variant_contig=(['variants'], variant_contigs_remapped))
                 
                 if len(unique_contig_indices) > 1:
-                    print(f"DEBUG: Region spans {len(unique_contig_indices)} contigs: {filtered_dataset.contig_id.values}", flush=True)
-                    print(f"DEBUG: Contig remapping: {dict(zip([self.dataset.contig_id.values[i] for i in unique_contig_indices], range(len(unique_contig_indices))))}", flush=True)
         
         return filtered_dataset
     
@@ -1024,20 +987,14 @@ class GenomicDataset:
                 pass
             elif stat == 'zeng_e':
                 stat_ds = zeng_e(self.windowed_dataset)
-                print(f"DEBUG: zeng_e stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
-                print(f"DEBUG: zeng_e first 3 values: {stat_ds['zeng_e'].values[:3]}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
-                print(f"DEBUG: After merge, result_dataset has zeng_e: {'zeng_e' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'fay_wu_h':
                 stat_ds = fay_wu_h(self.windowed_dataset)
-                print(f"DEBUG: fay_wu_h stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
-                print(f"DEBUG: fay_wu_h first 3 values: {stat_ds['fay_wu_h'].values[:3]}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
-                print(f"DEBUG: After merge, result_dataset has fay_wu_h: {'fay_wu_h' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
@@ -1102,10 +1059,7 @@ class GenomicDataset:
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat == 'omega_statistic':
                 stat_ds = omega_statistic(self.windowed_dataset, enable_profiling=self.enable_profiling)
-                print(f"DEBUG: omega_statistic stat_ds variables: {list(stat_ds.data_vars)}", flush=True)
-                print(f"DEBUG: omega_statistic first 3 values: {stat_ds['omega_statistic'].values[:3]}", flush=True)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
-                print(f"DEBUG: After merge, result_dataset has omega_statistic: {'omega_statistic' in result_dataset.data_vars}", flush=True)
                 
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
@@ -1115,10 +1069,8 @@ class GenomicDataset:
         # sgkit's statistics will automatically account for missing data
         
         # Normalize theta estimators by callable sites
-        print(f"DEBUG: About to normalize theta by callable sites, result_dataset has {len(result_dataset.windows)} windows", flush=True)
         result_dataset_before_norm = result_dataset.copy()
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
-        print(f"DEBUG: Finished normalizing theta by callable sites", flush=True)
         
         # Now filter out windows where LD statistics failed to calculate
         # (min_variants filtering already done before stat calculation)
@@ -1270,16 +1222,13 @@ class GenomicDataset:
         Returns:
             Dataset with normalized theta estimators
         """
-        print(f"DEBUG: _normalize_theta_by_callable_sites called with {len(window_stats.windows)} windows", flush=True)
         result = window_stats.copy()
         
         # Use vectorized batch calculation if BED file available
         if hasattr(self, 'bed_gr') and self.bed_gr is not None and self.callable_config.bed_file:
-            print(f"DEBUG: Using batch callable sites calculation", flush=True)
             callable_sites_per_window = self._calculate_callable_lengths_batch(window_stats)
         else:
             # Fall back to per-window calculation (no BED file or old method)
-            print(f"DEBUG: Using per-window callable sites calculation (no BED or fallback)", flush=True)
             callable_sites_per_window = self._calculate_callable_lengths_per_window(window_stats)
         
         callable_sites_per_window = np.array(callable_sites_per_window)
@@ -1299,7 +1248,6 @@ class GenomicDataset:
             if stat in result.data_vars:
                 # Debug: Check values before normalization
                 if stat == 'theta_pi':
-                    print(f"DEBUG theta normalization: First 3 windows before normalization:", flush=True)
                     print(f"  theta_pi values: {result[stat].values[:3]}", flush=True)
                     print(f"  callable_sites: {callable_sites_per_window[:3]}", flush=True)
                 
@@ -1337,7 +1285,6 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
-        print(f"DEBUG: Dataset info for callable sites calculation:", flush=True)
         print(f"  Dataset contigs: {contig_names}", flush=True)
         print(f"  N variants in dataset: {len(positions)}", flush=True)
         print(f"  Variant position range: {positions.min()}-{positions.max()}", flush=True)
@@ -1364,7 +1311,6 @@ class GenomicDataset:
             window_size = 1000
             step_size = 1000
         
-        print(f"DEBUG: window_size={window_size}, step_size={step_size}", flush=True)
         
         for window_idx in range(num_windows):
             # Use window_start_idx and window_stop_idx (variant array indices)
@@ -1388,7 +1334,6 @@ class GenomicDataset:
                 # Debug first few windows to verify inference
                 if window_idx < 3:
                     n_variants_in_window = window_stop_idx - window_start_idx
-                    print(f"DEBUG Window {window_idx}:", flush=True)
                     print(f"  Variant indices: [{window_start_idx}, {window_stop_idx})", flush=True)
                     print(f"  N variants: {n_variants_in_window}", flush=True)
                     print(f"  First variant pos: {first_variant_pos}", flush=True)
@@ -1415,7 +1360,6 @@ class GenomicDataset:
         })
         
         # Debug: Check window coordinates
-        print(f"DEBUG: First 3 windows:", flush=True)
         for i in range(min(3, len(windows_df))):
             print(f"  Window {i}: {windows_df.iloc[i]['Chromosome']} {windows_df.iloc[i]['Start']}-{windows_df.iloc[i]['End']} (length={windows_df.iloc[i]['End']-windows_df.iloc[i]['Start']})", flush=True)
         
@@ -1431,13 +1375,11 @@ class GenomicDataset:
         
         if self.callable_config.bed_format == "non_callable":
             # Use PyRanges for fast overlap calculation
-            print(f"DEBUG: Calculating callable sites using PyRanges overlap for {num_windows} windows", flush=True)
             
             # Find overlaps between windows and BED regions
             # Use join to get both window and BED coordinates
             overlaps = windows_gr.join(self.bed_gr, suffix='_bed')
             
-            print(f"DEBUG: Found {len(overlaps)} window-BED overlaps", flush=True)
             
             # Calculate masked length per window
             callable_lengths = []
@@ -1468,7 +1410,6 @@ class GenomicDataset:
                 
                 # Debug first few windows
                 if window_idx < 3:
-                    print(f"DEBUG Window {window_idx}: length={window_length}, masked={masked_length}, callable={callable_length}, overlaps={len(window_overlaps)}", flush=True)
                     if len(window_overlaps) > 0:
                         print(f"  First few overlapping BED regions:", flush=True)
                         for idx, row in window_overlaps.head(5).iterrows():
@@ -1495,13 +1436,11 @@ class GenomicDataset:
             
         elif self.callable_config.bed_format == "callable":
             # Use PyRanges for fast overlap calculation
-            print(f"DEBUG: Calculating callable sites using PyRanges overlap for {num_windows} windows", flush=True)
             
             # Find overlaps between windows and BED regions
             # Use join to get both window and BED coordinates
             overlaps = windows_gr.join(self.bed_gr, suffix='_bed')
             
-            print(f"DEBUG: Found {len(overlaps)} window-BED overlaps", flush=True)
             
             # Calculate callable length per window
             callable_lengths = []
@@ -1980,13 +1919,11 @@ class GenomicDataset:
                     print(f"  WARNING: No variants in region {contig}:{region_start:,}-{region_end:,}, skipping", flush=True)
                     continue
                 
-                print(f"DEBUG: About to create windows with {n_variants} variants", flush=True)
                 
                 # Temporarily swap dataset to use region_dataset
                 original_dataset = self.dataset
                 self.dataset = region_dataset
                 
-                print(f"DEBUG: After swap, self.dataset has {len(self.dataset.variants)} variants", flush=True)
                 
                 # Create windows for this region
                 self.create_windows()

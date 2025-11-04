@@ -1391,8 +1391,6 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     # Calculate Zeng's E for each window
     zeng_e_values = np.full(n_windows, np.nan)
     
-    if n_windows > 0:
-        print(f"DEBUG zeng_e: n_windows={n_windows}, first window variants: {window_stops[0] - window_starts[0]}", flush=True)
     
     for w_idx in range(n_windows):
         # Extract variants in this window
@@ -1427,9 +1425,6 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         term2 -= 2.0 * (window_max_n * bn - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
         term2 -= (3.0 * window_max_n + 1.0) / (window_max_n - 1.0)
         
-        # DEBUG: Print variance components for first window
-        if w_idx == 0:
-            print(f"DEBUG zeng_e variance components: n={window_max_n}, a1={a1:.4f}, bn={bn:.4f}, term1={term1:.4f}, term2={term2:.4f}", flush=True)
         
         # Get unfolded SFS for entire window
         sfs, n_max = get_unfolded_sfs(window_variant_matrix)
@@ -1443,13 +1438,6 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         theta_l_val = calculate_theta_l(sfs, window_max_n)
         theta_w_val = calculate_theta_w(sfs, window_max_n)
         
-        # DEBUG: Check if theta values are zero
-        if w_idx < 3:  # Only print for first few windows
-            b1_temp = calculate_b1(window_max_n)
-            theta_temp = S / a1
-            theta_sq_temp = S * (S - 1) / (a1 * a1 + b1_temp)
-            var_e_temp = term1 * theta_temp + term2 * theta_sq_temp
-            print(f"DEBUG zeng_e window {w_idx}: S={S}, theta_l={theta_l_val}, theta_w={theta_w_val}, var_e={var_e_temp}", flush=True)
         
         # Calculate variance of E
         # From Walsh & Lynch 2018, Equation 9.28c (page 307):
@@ -1466,7 +1454,6 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
             # Zeng et al. (2006) variance formula breaks down for large n
             # Use absolute value as rough approximation (not theoretically justified)
             if w_idx < 3:
-                print(f"  WARNING: Negative variance for window {w_idx}, using abs(var)", flush=True)
             zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(abs(var_e))
         else:
             zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(var_e)
@@ -1624,8 +1611,6 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     # Calculate Fay and Wu's H for each window
     fay_wu_h_values = np.full(n_windows, np.nan)
     
-    if n_windows > 0:
-        print(f"DEBUG fay_wu_h: n_windows={n_windows}, first window variants: {window_stops[0] - window_starts[0]}", flush=True)
     
     for w_idx in range(n_windows):
         # Extract variants in this window
@@ -1652,9 +1637,6 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         a2 = calculate_a2(window_max_n)
         u_h, v_h = calculate_v_h(window_max_n, a1, a2)
         
-        # DEBUG: Print variance components for first window
-        if w_idx == 0:
-            print(f"DEBUG fay_wu_h variance components: n={window_max_n}, a1={a1:.4f}, a2={a2:.4f}, u_h={u_h:.4f}, v_h={v_h:.4f}", flush=True)
         
         # Get SFS for entire window
         sfs, n_max = get_unfolded_sfs(window_variant_matrix)
@@ -1677,16 +1659,12 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
         var_h = u_h * theta_for_var + v_h * theta_sq_for_var
         
-        # DEBUG: Check if theta_h is zero
-        if w_idx < 3:  # Only print for first few windows
-            print(f"DEBUG fay_wu_h window {w_idx}: S={S}, pi={pi}, theta_h={theta_h_val}, var_h={var_h}", flush=True)
         
         if var_h <= 0:
             # Variance is negative - known issue for large sample sizes (n > ~50)
             # Fay & Wu (2000) variance formula breaks down for large n
             # Use absolute value as rough approximation (not theoretically justified)
             if w_idx < 3:
-                print(f"  WARNING: Negative variance for window {w_idx}, using abs(var)", flush=True)
             fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(abs(var_h))
         else:
             fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(var_h)
