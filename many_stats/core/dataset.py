@@ -1434,7 +1434,8 @@ class GenomicDataset:
             print(f"DEBUG: Calculating callable sites using PyRanges overlap for {num_windows} windows", flush=True)
             
             # Find overlaps between windows and BED regions
-            overlaps = windows_gr.overlap(self.bed_gr)
+            # Use join to get both window and BED coordinates
+            overlaps = windows_gr.join(self.bed_gr, suffix='_bed')
             
             print(f"DEBUG: Found {len(overlaps)} window-BED overlaps", flush=True)
             
@@ -1453,12 +1454,14 @@ class GenomicDataset:
                 # Get overlaps for this specific window
                 window_overlaps = overlaps.df[overlaps.df['window_idx'] == window_idx]
                 
-                # Calculate total masked length
+                # Calculate total masked length from BED regions
                 masked_length = 0
                 for _, row in window_overlaps.iterrows():
-                    # PyRanges overlap returns the intersection coordinates
-                    overlap_start = row['Start']
-                    overlap_end = row['End']
+                    # Calculate intersection between window and BED region
+                    # Window: [row['Start'], row['End'])
+                    # BED: [row['Start_bed'], row['End_bed'])
+                    overlap_start = max(row['Start'], row['Start_bed'])
+                    overlap_end = min(row['End'], row['End_bed'])
                     masked_length += overlap_end - overlap_start
                 
                 callable_length = window_length - masked_length
@@ -1469,11 +1472,17 @@ class GenomicDataset:
                     if len(window_overlaps) > 0:
                         print(f"  First few overlapping BED regions:", flush=True)
                         for idx, row in window_overlaps.head(5).iterrows():
-                            overlap_len = row['End'] - row['Start']
-                            print(f"    BED overlap: [{row['Start']}, {row['End']}) = {overlap_len}bp", flush=True)
+                            bed_start = row['Start_bed']
+                            bed_end = row['End_bed']
+                            win_start = row['Start']
+                            win_end = row['End']
+                            overlap_start = max(win_start, bed_start)
+                            overlap_end = min(win_end, bed_end)
+                            overlap_len = overlap_end - overlap_start
+                            print(f"    BED: [{bed_start}, {bed_end}), Window: [{win_start}, {win_end}), Intersection: [{overlap_start}, {overlap_end}) = {overlap_len}bp", flush=True)
                         if len(window_overlaps) > 5:
                             print(f"    ... and {len(window_overlaps) - 5} more overlaps", flush=True)
-                        total_from_overlaps = sum(row['End'] - row['Start'] for _, row in window_overlaps.iterrows())
+                        total_from_overlaps = sum(min(row['End'], row['End_bed']) - max(row['Start'], row['Start_bed']) for _, row in window_overlaps.iterrows())
                         print(f"  Total masked from overlaps: {total_from_overlaps}bp", flush=True)
                 
                 callable_lengths.append(max(1, callable_length))
@@ -1489,7 +1498,8 @@ class GenomicDataset:
             print(f"DEBUG: Calculating callable sites using PyRanges overlap for {num_windows} windows", flush=True)
             
             # Find overlaps between windows and BED regions
-            overlaps = windows_gr.overlap(self.bed_gr)
+            # Use join to get both window and BED coordinates
+            overlaps = windows_gr.join(self.bed_gr, suffix='_bed')
             
             print(f"DEBUG: Found {len(overlaps)} window-BED overlaps", flush=True)
             
@@ -1507,9 +1517,11 @@ class GenomicDataset:
                 # Calculate total callable length (sum of all overlapping callable regions)
                 callable_length = 0
                 for _, row in window_overlaps.iterrows():
-                    # PyRanges overlap returns the intersection coordinates
-                    overlap_start = row['Start']
-                    overlap_end = row['End']
+                    # Calculate intersection between window and BED region
+                    # Window: [row['Start'], row['End'])
+                    # BED: [row['Start_bed'], row['End_bed'])
+                    overlap_start = max(row['Start'], row['Start_bed'])
+                    overlap_end = min(row['End'], row['End_bed'])
                     callable_length += overlap_end - overlap_start
                 
                 callable_lengths.append(max(1, callable_length))
