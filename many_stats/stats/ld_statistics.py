@@ -231,23 +231,24 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
     versus between regions to detect the characteristic LD pattern of
     a completed hard sweep.
     
+    Following pylibseq implementation: iterate through each SNP as a potential
+    breakpoint, calculate LD within left region, within right region, and between
+    regions, then find the maximum omega across all breakpoints.
+    
     Reference: Walsh and Lynch (2018) Equation 9.37
+    Kim & Nielsen (2004) Genetics 167:1513-1524
     
     Args:
         genotypes: Array of shape (n_variants, n_samples, ploidy) with genotype calls
-        window_size: Size of the sliding window for analysis
+        window_size: Minimum number of variants (unused, kept for compatibility)
         
     Returns:
-        Omega statistic value
+        Maximum omega statistic value across all potential breakpoints
     """
     n_variants, n_samples, ploidy = genotypes.shape
     
     if n_variants < 3:  # Need at least 3 variants for meaningful analysis
         return np.nan
-    
-    # Adjust window_size if we have fewer variants than requested
-    if n_variants < window_size:
-        window_size = n_variants
     
     # Convert to dosage (sum across ploidy)
     dosage = np.zeros((n_variants, n_samples))
@@ -255,8 +256,16 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
         for j in range(n_samples):
             dosage[i, j] = genotypes[i, j, :].sum()
     
+    # Calculate minor allele frequencies
+    mafs = np.zeros(n_variants)
+    for i in range(n_variants):
+        allele_count = dosage[i, :].sum()
+        total_alleles = n_samples * ploidy
+        maf = min(allele_count, total_alleles - allele_count)
+        mafs[i] = maf
+    
     # Calculate all pairwise r² values
-    r_squared_matrix = np.zeros((n_variants, n_variants))
+    r_squared_matrix = np.full((n_variants, n_variants), np.nan)
     
     for i in range(n_variants):
         for j in range(i + 1, n_variants):
@@ -268,46 +277,60 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
             r_squared_matrix[i, j] = r_squared
             r_squared_matrix[j, i] = r_squared
     
-    # Calculate omega for different window positions
+    # Iterate through each SNP as a potential breakpoint (excluding first and last)
+    # Following pylibseq: only consider SNPs with MAF > 1
     max_omega = -np.inf
     
-    for start_pos in range(n_variants - window_size + 1):
-        end_pos = start_pos + window_size
-        
-        # Define regions L and R
-        l_size = window_size // 2
-        r_size = window_size - l_size
-        
-        if l_size < 1 or r_size < 1:
+    for breakpoint in range(1, n_variants - 1):  # positions 1 to S-2
+        if mafs[breakpoint] <= 1:
             continue
         
-        # Calculate Cs,l
-        s = window_size
-        l = l_size
-        c_s_l = (l * (s - l)) / (l * (l - 1) / 2 + (s - l) * (s - l - 1) / 2)
+        # L = variants at positions [0, breakpoint] (inclusive)
+        # R = variants at positions [breakpoint+1, n_variants-1] (inclusive)
+        l = breakpoint + 1  # Number of variants in L (0-indexed, so add 1)
+        s = n_variants  # Total number of variants
         
-        # Calculate within-L LD
-        within_l = 0.0
-        for i in range(start_pos, start_pos + l):
-            for j in range(i + 1, start_pos + l):
-                within_l += r_squared_matrix[i, j]
+        if l < 1 or (s - l) < 1:
+            continue
         
-        # Calculate within-R LD
-        within_r = 0.0
-        for i in range(start_pos + l, end_pos):
-            for j in range(i + 1, end_pos):
-                within_r += r_squared_matrix[i, j]
+        # Calculate sum of r² within L
+        sum_rsq_L = 0.0
+        for i in range(0, breakpoint + 1):
+            for j in range(i + 1, breakpoint + 1):
+                if not np.isnan(r_squared_matrix[i, j]):
+                    sum_rsq_L += r_squared_matrix[i, j]
         
-        # Calculate between L and R LD
-        between_lr = 0.0
-        for i in range(start_pos, start_pos + l):
-            for j in range(start_pos + l, end_pos):
-                between_lr += r_squared_matrix[i, j]
+        # Calculate sum of r² within R
+        sum_rsq_R = 0.0
+        for i in range(breakpoint + 1, n_variants):
+            for j in range(i + 1, n_variants):
+                if not np.isnan(r_squared_matrix[i, j]):
+                    sum_rsq_R += r_squared_matrix[i, j]
+        
+        # Calculate sum of r² between L and R
+        sum_rsq_LR = 0.0
+        for i in range(0, breakpoint + 1):
+            for j in range(breakpoint + 1, n_variants):
+                if not np.isnan(r_squared_matrix[i, j]):
+                    sum_rsq_LR += r_squared_matrix[i, j]
+        
+        # Calculate C_{S,ℓ} from Equation 9.37
+        # C_{S,ℓ} = ℓ(S-ℓ) / [binom(ℓ,2) + binom(S-ℓ,2)]
+        numerator_c = l * (s - l)
+        denominator_c = (l * (l - 1) / 2.0) + ((s - l) * (s - l - 1) / 2.0)
+        
+        if denominator_c == 0:
+            continue
+        
+        c_s_l = numerator_c / denominator_c
         
         # Calculate omega
-        if between_lr > 0:
-            omega = c_s_l * (within_l + within_r) / between_lr
-            max_omega = max(max_omega, omega)
+        numerator_omega = c_s_l * (sum_rsq_L + sum_rsq_R)
+        
+        if sum_rsq_LR > 0:
+            omega = numerator_omega / sum_rsq_LR
+            if np.isfinite(omega):
+                max_omega = max(max_omega, omega)
     
     return max_omega if max_omega != -np.inf else np.nan
 
