@@ -1345,8 +1345,8 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     Where:
     - θL = Zeng et al.'s theta emphasizing high-frequency sites
     - θw = Watterson's theta (segregating sites)
-    - Var(θL - θw) = [n/(2(n-1)) - 1/a₁]θ + [bₙ + 2(n/(n-1))²bₙ - 2(nbₙ-n+1)/((n-1)a₁) - (3n+1)/(n-1)]θ²
-    - a₁ = Σ[i=1 to n-1] 1/i (harmonic number)
+    - Var(θL - θw) = [n/(2(n-1)) - 1/aₙ]θ + [bₙ/a²ₙ + 2(n/(n-1))²bₙ - 2(nbₙ-n+1)/(n-1)aₙ - (3n+1)/(n-1)]θ²
+    - aₙ = Σ[i=1 to n-1] 1/i (harmonic number)
     - bₙ = Σ[i=1 to n-1] 1/i² (harmonic sum of squares)
     - n = sample size
     
@@ -1421,8 +1421,9 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         # Pre-calculate variance components using window_max_n
         # From Walsh & Lynch 2018, Equation 9.28c (page 307)
         # CRITICAL: The textbook uses bₙ (harmonic sum Σ(1/i²)), not b₂
+        # Formula: [bₙ/a²ₙ + 2(n/(n-1))²bₙ - 2(nbₙ-n+1)/(n-1)aₙ - (3n+1)/(n-1)]θ²
         term1 = (window_max_n / (2.0 * (window_max_n - 1.0))) - (1.0 / a1)
-        term2 = bn + 2.0 * (window_max_n / (window_max_n - 1.0)) ** 2 * bn
+        term2 = bn / (a1 * a1) + 2.0 * (window_max_n / (window_max_n - 1.0)) ** 2 * bn
         term2 -= 2.0 * (window_max_n * bn - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
         term2 -= (3.0 * window_max_n + 1.0) / (window_max_n - 1.0)
         
