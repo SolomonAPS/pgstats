@@ -1450,11 +1450,9 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         var_e = term1 * theta_for_var + term2 * theta_sq_for_var
         
         if var_e <= 0:
-            # Variance is negative - known issue for large sample sizes (n > ~50)
-            # Zeng et al. (2006) variance formula breaks down for large n
-            # Use absolute value as rough approximation (not theoretically justified)
-            if w_idx < 3:
-            zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(abs(var_e))
+            # Variance should be positive with correct bn formula
+            # If negative, likely indicates numerical issues or edge case
+            zeng_e_values[w_idx] = np.nan
         else:
             zeng_e_values[w_idx] = (theta_l_val - theta_w_val) / np.sqrt(var_e)
     
@@ -1661,11 +1659,9 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         
         
         if var_h <= 0:
-            # Variance is negative - known issue for large sample sizes (n > ~50)
-            # Fay & Wu (2000) variance formula breaks down for large n
-            # Use absolute value as rough approximation (not theoretically justified)
-            if w_idx < 3:
-            fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(abs(var_h))
+            # Variance should be positive with correct b_{n+1} formula
+            # If negative, likely indicates numerical issues or edge case
+            fay_wu_h_values[w_idx] = np.nan
         else:
             fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(var_h)
     
