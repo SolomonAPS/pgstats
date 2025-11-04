@@ -681,8 +681,6 @@ def omega_statistic(ds: xr.Dataset,
     window_starts = ds.window_start_idx.values
     window_stops = ds.window_stop_idx.values
     
-    if n_windows > 0:
-    
     # Calculate omega for each window
     omega_values = np.full(n_windows, np.nan)
     
@@ -694,8 +692,6 @@ def omega_statistic(ds: xr.Dataset,
         # Calculate omega for this window
         if len(window_genotypes) >= 3:  # Need at least 3 variants
             omega_values[w_idx] = calculate_omega_statistic(window_genotypes, omega_window_size)
-            # DEBUG: Check omega calculation
-            if w_idx < 3:  # Only print for first few windows
     
     # Create result dataset
     result = ds.copy()
