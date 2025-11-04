@@ -655,11 +655,16 @@ class GenomicDataset:
                     positions[-1] <= end
                 )
                 
+                print(f"DEBUG create_windows: len(positions)={len(positions)}, positions[0]={positions[0] if len(positions) > 0 else 'N/A'}, positions[-1]={positions[-1] if len(positions) > 0 else 'N/A'}", flush=True)
+                print(f"DEBUG create_windows: start={start}, end={end}, already_filtered={dataset_already_filtered}", flush=True)
+                
                 if dataset_already_filtered:
                     # Dataset is already filtered to this region, use it directly
                     region_dataset = self.dataset
+                    print(f"DEBUG: Using already-filtered dataset with {len(region_dataset.variants)} variants", flush=True)
                 else:
                     # Filter dataset to region
+                    print(f"DEBUG: Re-filtering dataset (this shouldn't happen in multi-region mode!)", flush=True)
                     region_dataset = self._filter_to_region(start, end)
                 
                 # Check if region has any variants
@@ -1933,9 +1938,13 @@ class GenomicDataset:
                     print(f"  WARNING: No variants in region {contig}:{region_start:,}-{region_end:,}, skipping", flush=True)
                     continue
                 
+                print(f"DEBUG: About to create windows with {n_variants} variants", flush=True)
+                
                 # Temporarily swap dataset to use region_dataset
                 original_dataset = self.dataset
                 self.dataset = region_dataset
+                
+                print(f"DEBUG: After swap, self.dataset has {len(self.dataset.variants)} variants", flush=True)
                 
                 # Create windows for this region
                 self.create_windows()
