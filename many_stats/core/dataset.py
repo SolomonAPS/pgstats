@@ -898,12 +898,12 @@ class GenomicDataset:
         if contig is not None:
             variant_contigs = filtered_dataset.variant_contig.values
             unique_contig_indices = np.unique(variant_contigs)
-            if len(unique_contig_indices) > 0:
-                # Filter contig_id to only the contigs with variants
+            if len(unique_contig_indices) > 0 and len(unique_contig_indices) < len(filtered_dataset.contigs):
+                # Filter dataset along contigs dimension to only include contigs with variants
                 # Example: If variants from chr3L (idx=2) and chr3R (idx=3):
                 #   unique_contig_indices = [2, 3]
-                #   contig_id becomes ['chr3L', 'chr3R']
-                filtered_dataset = filtered_dataset.assign(contig_id=filtered_dataset.contig_id.isel(contigs=unique_contig_indices))
+                #   Dataset is filtered to only contigs 2 and 3
+                filtered_dataset = filtered_dataset.isel(contigs=unique_contig_indices)
                 
                 # Remap variant_contig indices to be 0-based for the filtered contigs
                 # np.unique returns sorted values, so lowest original index → 0, next → 1, etc.
