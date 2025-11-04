@@ -851,10 +851,31 @@ class GenomicDataset:
         else:
             print(f"Will filter to {n_filtered} windows (removing {n_removed} with <{self.window_config.min_variants} variants after stats calculation)")
     
-    def _filter_to_region(self, start: int, end: int) -> xr.Dataset:
-        """Filter dataset to a specific genomic region."""
+    def _filter_to_region(self, start: int, end: int, contig: str = None) -> xr.Dataset:
+        """Filter dataset to a specific genomic region.
+        
+        Args:
+            start: Start position (inclusive)
+            end: End position (inclusive)
+            contig: Contig/chromosome name (if None, filters by position only)
+        """
         positions = self.dataset.variant_position.values
         region_mask = (positions >= start) & (positions <= end)
+        
+        # Also filter by contig if specified
+        if contig is not None:
+            contig_names = self.dataset.contig_id.values
+            variant_contigs = self.dataset.variant_contig.values
+            
+            # Find the contig index for this contig name
+            contig_idx = np.where(contig_names == contig)[0]
+            if len(contig_idx) == 0:
+                raise ValueError(f"Contig '{contig}' not found in dataset. Available: {contig_names}")
+            contig_idx = contig_idx[0]
+            
+            # Filter by both position AND contig
+            contig_mask = variant_contigs == contig_idx
+            region_mask = region_mask & contig_mask
         
         # Check if any variants match the region
         n_variants = np.sum(region_mask)
@@ -1897,7 +1918,7 @@ class GenomicDataset:
                 # Filter to region first
                 if self.enable_profiling:
                     start = time.time()
-                region_dataset = self._filter_to_region(region_start, region_end)
+                region_dataset = self._filter_to_region(region_start, region_end, contig)
                 if self.enable_profiling:
                     elapsed = time.time() - start
                     print(f"[Timing] Filter to region: {elapsed:.2f}s", flush=True)
