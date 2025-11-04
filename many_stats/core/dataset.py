@@ -892,6 +892,31 @@ class GenomicDataset:
         filtered_dataset = self.dataset.isel(variants=region_mask)
         print(f"Filtered to region {start}-{end}: {n_variants} variants")
         
+        # Filter contig_id to only include contigs that actually have variants
+        # This prevents sgkit from trying to create windows for empty contigs
+        # Handles both single-contig and multi-contig regions
+        if contig is not None:
+            variant_contigs = filtered_dataset.variant_contig.values
+            unique_contig_indices = np.unique(variant_contigs)
+            if len(unique_contig_indices) > 0:
+                # Filter contig_id to only the contigs with variants
+                # Example: If variants from chr3L (idx=2) and chr3R (idx=3):
+                #   unique_contig_indices = [2, 3]
+                #   contig_id becomes ['chr3L', 'chr3R']
+                filtered_dataset = filtered_dataset.assign(contig_id=filtered_dataset.contig_id.isel(contigs=unique_contig_indices))
+                
+                # Remap variant_contig indices to be 0-based for the filtered contigs
+                # np.unique returns sorted values, so lowest original index → 0, next → 1, etc.
+                # Example: If original indices are [3, 2], np.unique([3,2]) = [2, 3] (sorted)
+                #   Mapping: {2: 0, 3: 1} → chr3L→0, chr3R→1
+                contig_map = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_contig_indices)}
+                variant_contigs_remapped = np.array([contig_map[idx] for idx in variant_contigs])
+                filtered_dataset = filtered_dataset.assign(variant_contig=(['variants'], variant_contigs_remapped))
+                
+                if len(unique_contig_indices) > 1:
+                    print(f"DEBUG: Region spans {len(unique_contig_indices)} contigs: {filtered_dataset.contig_id.values}", flush=True)
+                    print(f"DEBUG: Contig remapping: {dict(zip([self.dataset.contig_id.values[i] for i in unique_contig_indices], range(len(unique_contig_indices))))}", flush=True)
+        
         return filtered_dataset
     
     def calculate_windowed_stats(self, 
