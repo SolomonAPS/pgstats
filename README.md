@@ -2,7 +2,7 @@
 
 A comprehensive toolkit for calculating population genetics statistics from genomic data. Built on [sgkit](https://github.com/pystatgen/sgkit) with high-performance implementations using Numba JIT compilation.
 
-## Features
+## Features    
 
 - **Comprehensive statistics**: Neutrality tests, diversity measures, LD statistics, and haplotype statistics
 - **Flexible windowing**: Sliding windows, fixed windows, or genome-wide analysis
@@ -484,7 +484,7 @@ If you use pgstats in your research, please cite:
 ```bibtex
 @software{pgstats,
   title={pgstats: Population Genetics Statistics Toolkit},
-  author={Your Name},
+  author={Solomon Sloat},
   year={2024},
   url={https://github.com/SolomonAPS/pgstats}
 }
@@ -493,17 +493,6 @@ If you use pgstats in your research, please cite:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please see our contributing guidelines for details.
-
-```bash
-git clone https://github.com/SolomonAPS/pgstats.git
-cd pgstats
-pip install -e ".[dev]"
-pytest  # Run tests
-```
 
 ## Support
 
