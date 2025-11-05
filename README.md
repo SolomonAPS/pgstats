@@ -2,19 +2,6 @@
 
 A comprehensive statistical genomics toolkit built on top of [sgkit](https://github.com/pystatgen/sgkit) with custom statistical functions implemented using Numba for high performance.
 
-**Built with:**
-- [sgkit](https://github.com/pystatgen/sgkit) - Scalable genetics toolkit for large-scale genomic data
-- [sgkit documentation](https://pystatgen.github.io/sgkit/latest/) - Official sgkit documentation
-
-## Features
-
-- **Built on sgkit**: Leverages sgkit's efficient handling of genetic data and cloud-native formats
-- **Numba-optimized**: Custom statistical functions implemented with Numba JIT compilation for high performance
-- **Population genetics statistics**: Tajima's D, Fu and Li's statistics, and other neutrality tests
-- **Theta estimators**: theta_pi , theta_w , theta_h, theta_h_L
-- **LD stats**: D, D', r^2, omega
-- **Haplotype statistics**: Garud's stats, haplotype diversity
-
 ## Installation
 
 ### From Source
@@ -96,11 +83,6 @@ pg.io.save_results(ds, "results.zarr")
 - **theta_pi (θπ)**: Nucleotide diversity based on average pairwise differences
 - **theta_w (θw)**: Watterson's estimator based on number of segregating sites
 - **theta_h (θh)**: Fay and Wu's estimator based on high-frequency derived alleles
-
-### Selection Statistics
-
-- **McDonald-Kreitman test**: Compares polymorphism and divergence patterns
-- **Hudson-Kreitman-Aguade test**: Tests for selection across loci
 
 ### Missing Data Handling
 
