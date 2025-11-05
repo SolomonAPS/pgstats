@@ -881,6 +881,8 @@ class GenomicDataset:
                 filtered_dataset = filtered_dataset.assign(variant_contig=(['variants'], variant_contigs_remapped))
                 
                 if len(unique_contig_indices) > 1:
+                    # Multiple contigs present after filtering
+                    pass
         
         return filtered_dataset
     
