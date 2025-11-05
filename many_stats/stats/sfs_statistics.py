@@ -1425,6 +1425,10 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         term2 -= 2.0 * (window_max_n * bn - window_max_n + 1.0) / ((window_max_n - 1.0) * a1)
         term2 -= (3.0 * window_max_n + 1.0) / (window_max_n - 1.0)
         
+        # Debug first window only
+        if w_idx == 0:
+            print(f"  zeng_e: n={window_max_n}, a1={a1:.4f}, bn={bn:.4f}, term2={term2:.4f}", flush=True)
+        
         
         # Get unfolded SFS for entire window
         sfs, n_max = get_unfolded_sfs(window_variant_matrix)
@@ -1634,6 +1638,11 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         a1 = calculate_a1(window_max_n)
         a2 = calculate_a2(window_max_n)
         u_h, v_h = calculate_v_h(window_max_n, a1, a2)
+        
+        # Debug first window only
+        if w_idx == 0:
+            b_n_plus_1 = calculate_b1(window_max_n + 1)
+            print(f"  fay_wu_h: n={window_max_n}, a1={a1:.4f}, b_{{n+1}}={b_n_plus_1:.4f}, v_h={v_h:.4f}", flush=True)
         
         
         # Get SFS for entire window
