@@ -79,8 +79,6 @@ Theta ($\theta = 4N_e\mu$) is the population mutation parameter, where $N_e$ is 
 
 ### 1. Theta Pi ($\theta_\pi$) - Nucleotide Diversity
 
-**Based on**: Average pairwise differences
-
 $$\theta_\pi = \frac{1}{\binom{n}{2}} \sum_{i=1}^{n-1} i(n-i)\xi_i$$
 
 **Normalized by sequence length**:
@@ -89,13 +87,9 @@ $$\hat{\theta}_\pi = \frac{\theta_\pi}{L}$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.4; Wakeley (2009), Equation 4.39
 
-**Interpretation**: Expected heterozygosity; average number of pairwise differences per site.
-
 ---
 
 ### 2. Theta W ($\theta_w$) - Watterson's Estimator
-
-**Based on**: Number of segregating sites
 
 $$\theta_w = \frac{S}{a_1}$$
 
@@ -105,13 +99,9 @@ $$\hat{\theta}_w = \frac{\theta_w}{L} = \frac{S}{a_1 L}$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.5; Wakeley (2009), Equation 4.40
 
-**Interpretation**: Unbiased estimator of $\theta$ under neutral Wright-Fisher model.
-
 ---
 
 ### 3. Theta H ($\theta_h$) - Fay and Wu's Estimator
-
-**Based on**: High-frequency derived alleles
 
 $$\theta_h = \frac{1}{\binom{n}{2}} \sum_{i=1}^{n-1} i^2\xi_i$$
 
@@ -121,13 +111,9 @@ $$\hat{\theta}_h = \frac{\theta_h}{L}$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.6; Fay & Wu (2000), Equation 2
 
-**Interpretation**: Emphasizes high-frequency variants; sensitive to recent selective sweeps.
-
 ---
 
 ### 4. Theta L ($\theta_L$) - Zeng's Estimator
-
-**Based on**: Intermediate-frequency alleles
 
 $$\theta_L = \frac{1}{n-1} \sum_{i=1}^{n-1} i \cdot \xi_i$$
 
@@ -137,8 +123,6 @@ $$\hat{\theta}_L = \frac{\theta_L}{L}$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.7; Zeng et al. (2006), Equation 9.28a
 
-**Interpretation**: Weights sites by allele frequency; useful for detecting selective sweeps.
-
 ---
 
 ## Neutrality Tests
@@ -146,8 +130,6 @@ $$\hat{\theta}_L = \frac{\theta_L}{L}$$
 These statistics test for deviations from neutral evolution by comparing different theta estimators.
 
 ### 1. Tajima's D
-
-**Compares**: Pairwise differences vs. segregating sites
 
 $$D = \frac{\theta_\pi - \theta_w}{\sqrt{\text{Var}(\theta_\pi - \theta_w)}}$$
 
@@ -163,16 +145,9 @@ $$c_2 = b_2 - \frac{n+2}{a_1 n} + \frac{a_2}{a_1^2}$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.8; Tajima (1989); Wakeley (2009), Equation 4.35
 
-**Interpretation**:
-- $D = 0$: Consistent with neutral evolution
-- $D > 0$: Excess of intermediate-frequency alleles (balancing selection or population contraction)
-- $D < 0$: Excess of rare alleles (purifying selection, population expansion, or selective sweep)
-
 ---
 
 ### 2. Fu and Li's D* (Folded)
-
-**Compares**: Segregating sites vs. singleton frequency
 
 $$D^* = \frac{\frac{S}{a_1} - \frac{n-1}{n}\eta_1}{\sqrt{\text{Var}(D^*)}}$$
 
@@ -192,8 +167,6 @@ $$\alpha^* = \frac{1}{a_1} \cdot c_n - \beta^*$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.26b; Fu & Li (1993)
 
-**Interpretation**: Tests for an excess or deficit of singleton mutations relative to total segregating sites.
-
 ---
 
 ### 3. Fu and Li's D (Unfolded)
@@ -210,8 +183,6 @@ Uses same variance formula as $D^*$ but with derived singleton count $\zeta_1$.
 
 ### 4. Fu and Li's F* (Folded)
 
-**Compares**: Pairwise differences vs. singleton frequency
-
 $$F^* = \frac{\theta_\pi - \frac{n-1}{n}\eta_1}{\sqrt{\text{Var}(F^*)}}$$
 
 **Variance**:
@@ -225,8 +196,6 @@ $$\beta_F = \frac{1}{a_1^2 + b_2} \left[\frac{2n^3 + 110n^2 - 255n + 153}{9n^2(n
 $$\alpha_F = \frac{1}{a_1} \left[\frac{4n^2 + 19n + 3 - 12(n+1)a_{n+1}}{3n(n-1)}\right] - \beta_F$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.26e; Fu & Li (1993)
-
-**Interpretation**: Combines information from pairwise differences and singleton frequency.
 
 ---
 
@@ -244,8 +213,6 @@ Uses same variance formula as $F^*$ but with derived singleton count $\zeta_1$.
 
 ### 6. Zeng's E
 
-**Compares**: Zeng's theta vs. Watterson's theta
-
 $$E = \frac{\theta_L - \theta_w}{\sqrt{\text{Var}(\theta_L - \theta_w)}}$$
 
 **Variance** (using scaled $\theta$ from Equation 9.21b):
@@ -256,13 +223,9 @@ $$\text{Var}(\theta_L - \theta_w) = \left[\frac{n}{2(n-1)} - \frac{1}{a_n}\right
 
 **Reference**: Walsh & Lynch (2018), Equation 9.28c; Zeng et al. (2006)
 
-**Interpretation**: Sensitive to recent selective sweeps; negative values suggest recent positive selection.
-
 ---
 
 ### 7. Fay and Wu's H
-
-**Compares**: Pairwise differences vs. high-frequency alleles
 
 $$H = \frac{\theta_\pi - \theta_h}{\sqrt{\text{Var}(\theta_\pi - \theta_h)}}$$
 
@@ -281,8 +244,6 @@ $$v_H = \frac{18n^2(3n+2)b_{n+1} - (88n^3 + 9n^2 - 13n + 6)}{9n(n-1)^2}$$
 and $b_{n+1} = \sum_{i=1}^{n} \frac{1}{i^2} = a_2(n+1)$ is the harmonic sum of squares up to $n$.
 
 **Reference**: Walsh & Lynch (2018), Equation 9.27b; Fay & Wu (2000); Zeng et al. (2006)
-
-**Interpretation**: Negative values indicate an excess of high-frequency derived alleles, suggesting recent positive selection.
 
 ---
 
@@ -321,8 +282,6 @@ $$D_{\max} = \begin{cases}
 
 **Reference**: Walsh & Lynch (2018), Equation 9.2
 
-**Interpretation**: $|D'| = 1$ indicates complete LD (no recombination between loci).
-
 ---
 
 ### 3. r² (Squared Correlation Coefficient)
@@ -333,13 +292,9 @@ $$r^2 = \frac{D^2}{p_A(1-p_A) \cdot p_B(1-p_B)}$$
 
 **Reference**: Walsh & Lynch (2018), Equation 9.3
 
-**Interpretation**: Measures the proportion of variance at one locus explained by the other; $r^2 = 1$ indicates perfect LD.
-
 ---
 
 ### 4. Omega Statistic ($\omega$)
-
-**Detects**: Recombination breakpoints
 
 For a set of SNPs, partition into left (L) and right (R) regions at each potential breakpoint $k$:
 
@@ -356,15 +311,11 @@ $$\omega = \max_k \omega_k$$
 
 **Reference**: Kim & Nielsen (2004)
 
-**Interpretation**: High $\omega$ values indicate a recombination breakpoint, suggesting a selective sweep.
-
 ---
 
 ## Haplotype Statistics
 
 ### 1. Haplotype Diversity (H)
-
-**Definition**: Probability that two randomly chosen haplotypes differ
 
 $$H = 1 - \sum_{i=1}^{k} p_i^2$$
 
@@ -372,13 +323,9 @@ where $p_i$ is the frequency of the $i$-th haplotype and $k$ is the number of di
 
 **Reference**: Walsh & Lynch (2018)
 
-**Interpretation**: Similar to heterozygosity but for haplotypes; ranges from 0 (no diversity) to ~1 (high diversity).
-
 ---
 
 ### 2. Garud's H1
-
-**Definition**: Homozygosity of the most common haplotype
 
 $$H_1 = \sum_{i=1}^{k} p_i^2$$
 
@@ -386,45 +333,29 @@ where haplotypes are ordered by frequency: $p_1 \geq p_2 \geq \ldots \geq p_k$.
 
 **Reference**: Garud et al. (2015)
 
-**Interpretation**: High $H_1$ indicates low haplotype diversity; sensitive to hard selective sweeps.
-
 ---
 
 ### 3. Garud's H12
-
-**Definition**: Combined frequency of the two most common haplotypes
 
 $$H_{12} = (p_1 + p_2)^2 + \sum_{i=3}^{k} p_i^2$$
 
 **Reference**: Garud et al. (2015)
 
-**Interpretation**: Distinguishes hard sweeps (high $H_1$) from soft sweeps (high $H_{12}$ but moderate $H_1$).
-
 ---
 
 ### 4. Garud's H123
-
-**Definition**: Combined frequency of the three most common haplotypes
 
 $$H_{123} = (p_1 + p_2 + p_3)^2 + \sum_{i=4}^{k} p_i^2$$
 
 **Reference**: Garud et al. (2015)
 
-**Interpretation**: Further extends the ability to detect soft sweeps from multiple haplotypes.
-
 ---
 
 ### 5. Garud's H2/H1
 
-**Definition**: Ratio of homozygosity excluding the most common haplotype
-
 $$\frac{H_2}{H_1} = \frac{\sum_{i=2}^{k} p_i^2}{\sum_{i=1}^{k} p_i^2}$$
 
 **Reference**: Garud et al. (2015)
-
-**Interpretation**: 
-- Low $H_2/H_1$: Single dominant haplotype (hard sweep)
-- High $H_2/H_1$: Multiple common haplotypes (soft sweep or balancing selection)
 
 ---
 
