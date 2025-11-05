@@ -376,9 +376,7 @@ class GenomicDataset:
         elif not sample_bed_chr.startswith('chr') and sample_vcf_chr.startswith('chr'):
             # VCF has "chr" prefix, BED doesn't - add to BED
             bed_df['chrom'] = 'chr' + bed_df['chrom'].astype(str)
-        else:
-            # Chromosome names match convention
-            pass
+        # else: Chromosome names match convention, no changes needed
         
         # Create PyRanges object from BED file
         # BED is 0-based, half-open [start, end)
@@ -879,10 +877,6 @@ class GenomicDataset:
                 contig_map = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_contig_indices)}
                 variant_contigs_remapped = np.array([contig_map[idx] for idx in variant_contigs])
                 filtered_dataset = filtered_dataset.assign(variant_contig=(['variants'], variant_contigs_remapped))
-                
-                if len(unique_contig_indices) > 1:
-                    # Multiple contigs present after filtering
-                    pass
         
         return filtered_dataset
     
