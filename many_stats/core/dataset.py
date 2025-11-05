@@ -401,20 +401,9 @@ class GenomicDataset:
         # Create PyRanges object from variants
         variants_gr = pr.PyRanges(variants_df)
         
-        print(f"  {bed_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
-        print(f"  {variants_gr.head(3).df[['Chromosome', 'Start', 'End']].to_string()}", flush=True)
-        
-        # Test a manual overlap check for debugging
-        
-        # Check chromosome overlap and data types
-        
-        # Check data types
-        
-        
         # Find overlapping variants using PyRanges' efficient overlap detection
         # This uses NCLS (Nested Containment Lists) internally - very fast!
         overlapping_gr = variants_gr.overlap(bed_gr)
-        
         
         # Create boolean mask based on which variants overlap BED regions
         if self.callable_config.bed_format == "non_callable":
@@ -1016,10 +1005,6 @@ class GenomicDataset:
                     
                     # Calculate all LD statistics at once
                     self._cached_ld_stats = calculate_windowed_ld(self.windowed_dataset, enable_profiling=self.enable_profiling)
-                    
-                    if self.enable_profiling:
-                        if len(self._cached_ld_stats.windows) != len(self.windowed_dataset.windows):
-                            pass
                 
                 # Map stat name to LD dataset variable
                 ld_var_map = {
@@ -1090,20 +1075,10 @@ class GenomicDataset:
                 values = result_dataset[var].values.astype(float)
                 valid = ~np.isnan(values)  # True if LD calculation succeeded
                 valid_stats.append(valid)
-                
-                if self.enable_profiling:
-                    n_valid = np.sum(valid)
-                    n_failed = len(valid) - n_valid
-                    if n_failed > 0:
-                        pass
         
         if valid_stats:
             # Window is valid if any LD statistic was calculated successfully
             valid_windows = np.any(valid_stats, axis=0)
-            n_valid = np.sum(valid_windows)
-            n_failed = len(valid_windows) - n_valid
-            
-            
             result_dataset = result_dataset.isel(windows=valid_windows)
             print(f"Filtered to {len(result_dataset.windows)} windows with valid LD statistics", flush=True)
         
@@ -1244,11 +1219,6 @@ class GenomicDataset:
         
         for stat in theta_stats:
             if stat in result.data_vars:
-                # Debug: Check values before normalization
-                if stat == 'theta_pi':
-                    print(f"  theta_pi values: {result[stat].values[:3]}", flush=True)
-                    print(f"  callable_sites: {callable_sites_per_window[:3]}", flush=True)
-                
                 # Normalize each window's values by its callable sites
                 for window_idx in range(num_windows):
                     if callable_sites_per_window[window_idx] > 0:
@@ -1256,10 +1226,6 @@ class GenomicDataset:
                     else:
                         # If 0 callable sites, set to NaN (window is entirely non-callable)
                         result[stat].values[window_idx] = np.nan
-                
-                # Debug: Check values after normalization
-                if stat == 'theta_pi':
-                    print(f"  After normalization: {result[stat].values[:3]}", flush=True)
         
         return result
     
@@ -1283,14 +1249,6 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
-        print(f"  Dataset contigs: {contig_names}", flush=True)
-        print(f"  N variants in dataset: {len(positions)}", flush=True)
-        print(f"  Variant position range: {positions.min()}-{positions.max()}", flush=True)
-        print(f"  Variant contig indices (first 5): {contigs[:5]}", flush=True)
-        print(f"  Unique contig indices: {np.unique(contigs)}", flush=True)
-        print(f"  Contig index counts: {[(i, np.sum(contigs == i)) for i in np.unique(contigs)]}", flush=True)
-        print(f"  Expected contig for this region: (need to determine from window_stats)", flush=True)
-        
         # Convert window indices to genomic positions
         window_start_positions = []
         window_end_positions = []
@@ -1308,7 +1266,6 @@ class GenomicDataset:
             # Fallback: estimate from first window
             window_size = 1000
             step_size = 1000
-        
         
         for window_idx in range(num_windows):
             # Use window_start_idx and window_stop_idx (variant array indices)
@@ -1329,17 +1286,6 @@ class GenomicDataset:
                 window_start_pos = (first_variant_pos // step_size) * step_size
                 window_end_pos = window_start_pos + window_size
                 
-                # Debug first few windows to verify inference
-                if window_idx < 3:
-                    n_variants_in_window = window_stop_idx - window_start_idx
-                    print(f"  Variant indices: [{window_start_idx}, {window_stop_idx})", flush=True)
-                    print(f"  N variants: {n_variants_in_window}", flush=True)
-                    print(f"  First variant pos: {first_variant_pos}", flush=True)
-                    print(f"  Last variant pos: {last_variant_pos}", flush=True)
-                    print(f"  Inferred window: [{window_start_pos}, {window_end_pos})", flush=True)
-                    print(f"  Check: first in window? {window_start_pos <= first_variant_pos < window_end_pos}", flush=True)
-                    print(f"  Check: last in window? {window_start_pos <= last_variant_pos < window_end_pos}", flush=True)
-                
                 window_start_positions.append(window_start_pos)
                 window_end_positions.append(window_end_pos)
                 window_contigs.append(contig_name)
@@ -1357,10 +1303,6 @@ class GenomicDataset:
             'window_idx': range(num_windows)
         })
         
-        # Debug: Check window coordinates
-        for i in range(min(3, len(windows_df))):
-            print(f"  Window {i}: {windows_df.iloc[i]['Chromosome']} {windows_df.iloc[i]['Start']}-{windows_df.iloc[i]['End']} (length={windows_df.iloc[i]['End']-windows_df.iloc[i]['Start']})", flush=True)
-        
         # Remove windows with None contig
         valid_windows = windows_df['Chromosome'].notna()
         windows_gr = pr.PyRanges(windows_df[valid_windows])
@@ -1372,12 +1314,8 @@ class GenomicDataset:
         bed_df = self.bed_gr.df.copy()
         
         if self.callable_config.bed_format == "non_callable":
-            # Use PyRanges for fast overlap calculation
-            
             # Find overlaps between windows and BED regions
-            # Use join to get both window and BED coordinates
             overlaps = windows_gr.join(self.bed_gr, suffix='_bed')
-            
             
             # Calculate masked length per window
             callable_lengths = []
@@ -1405,25 +1343,6 @@ class GenomicDataset:
                     masked_length += overlap_end - overlap_start
                 
                 callable_length = window_length - masked_length
-                
-                # Debug first few windows
-                if window_idx < 3:
-                    if len(window_overlaps) > 0:
-                        print(f"  First few overlapping BED regions:", flush=True)
-                        for idx, row in window_overlaps.head(5).iterrows():
-                            bed_start = row['Start_bed']
-                            bed_end = row['End_bed']
-                            win_start = row['Start']
-                            win_end = row['End']
-                            overlap_start = max(win_start, bed_start)
-                            overlap_end = min(win_end, bed_end)
-                            overlap_len = overlap_end - overlap_start
-                            print(f"    BED: [{bed_start}, {bed_end}), Window: [{win_start}, {win_end}), Intersection: [{overlap_start}, {overlap_end}) = {overlap_len}bp", flush=True)
-                        if len(window_overlaps) > 5:
-                            print(f"    ... and {len(window_overlaps) - 5} more overlaps", flush=True)
-                        total_from_overlaps = sum(min(row['End'], row['End_bed']) - max(row['Start'], row['Start_bed']) for _, row in window_overlaps.iterrows())
-                        print(f"  Total masked from overlaps: {total_from_overlaps}bp", flush=True)
-                
                 callable_lengths.append(max(1, callable_length))
             
             if self.enable_profiling:
@@ -1433,12 +1352,8 @@ class GenomicDataset:
             return np.array(callable_lengths)
             
         elif self.callable_config.bed_format == "callable":
-            # Use PyRanges for fast overlap calculation
-            
             # Find overlaps between windows and BED regions
-            # Use join to get both window and BED coordinates
             overlaps = windows_gr.join(self.bed_gr, suffix='_bed')
-            
             
             # Calculate callable length per window
             callable_lengths = []
@@ -1917,11 +1832,9 @@ class GenomicDataset:
                     print(f"  WARNING: No variants in region {contig}:{region_start:,}-{region_end:,}, skipping", flush=True)
                     continue
                 
-                
                 # Temporarily swap dataset to use region_dataset
                 original_dataset = self.dataset
                 self.dataset = region_dataset
-                
                 
                 # Create windows for this region
                 self.create_windows()
