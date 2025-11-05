@@ -1,15 +1,15 @@
 """
-Basic tests for many-stats functionality.
+Basic tests for pgstats functionality.
 """
 
 import pytest
 import numpy as np
 import sgkit as sg
-import many_stats as ms
+import pgstats as ms
 
 
 def test_basic_functionality():
-    """Test basic functionality of many-stats."""
+    """Test basic functionality of pgstats."""
     
     # Create a simple test dataset
     ds = sg.simulate_genotype_call_dataset(n_variant=100, n_sample=20, missing_pct=0.1)

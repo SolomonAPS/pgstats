@@ -1,4 +1,4 @@
-# Many-Stats
+# pgstats - Population Genetics Statistics Toolkit
 
 A comprehensive statistical genomics toolkit built on top of [sgkit](https://github.com/pystatgen/sgkit) with custom statistical functions implemented using Numba for high performance.
 
@@ -20,8 +20,8 @@ A comprehensive statistical genomics toolkit built on top of [sgkit](https://git
 ### From Source
 
 ```bash
-git clone https://github.com/SolomonAPS/many-stats.git
-cd many-stats
+git clone https://github.com/SolomonAPS/pgstats.git
+cd pgstats
 pip install -e .
 ```
 
@@ -42,45 +42,45 @@ pip install -e .
 ### Loading VCF Data
 
 ```python
-import many_stats as ms
-from many_stats.io.loaders import load_vcf_simple
+import pgstats as pg
+from pgstats.io.loaders import load_vcf_simple
 
 # Load VCF data using vcf2zarr
 ds = load_vcf_simple("your_data.vcf.gz")
 
 # Calculate population statistics
-ds = ms.stats.tajima_d(ds)
-ds = ms.stats.fu_li_d(ds)
-ds = ms.stats.fu_li_f(ds)
+ds = pg.stats.tajima_d(ds)
+ds = pg.stats.fu_li_d(ds)
+ds = pg.stats.fu_li_f(ds)
 
 # Calculate diversity statistics
-ds = ms.stats.nucleotide_diversity(ds)
-ds = ms.stats.theta_w(ds)
+ds = pg.stats.nucleotide_diversity(ds)
+ds = pg.stats.theta_w(ds)
 
 # Save results
-ms.io.save_results(ds, "results.zarr")
+pg.io.save_results(ds, "results.zarr")
 ```
 
 ### Using Simulated Data
 
 ```python
-import many_stats as ms
+import pgstats as pg
 import sgkit as sg
 
 # Simulate genetic data
 ds = sg.simulate_genotype_call_dataset(n_variant=1000, n_sample=50, missing_pct=0.1)
 
 # Calculate population statistics
-ds = ms.stats.tajima_d(ds)
-ds = ms.stats.fu_li_d(ds)
-ds = ms.stats.fu_li_f(ds)
+ds = pg.stats.tajima_d(ds)
+ds = pg.stats.fu_li_d(ds)
+ds = pg.stats.fu_li_f(ds)
 
 # Calculate diversity statistics
-ds = ms.stats.nucleotide_diversity(ds)
-ds = ms.stats.theta_w(ds)
+ds = pg.stats.nucleotide_diversity(ds)
+ds = pg.stats.theta_w(ds)
 
 # Save results
-ms.io.save_results(ds, "results.zarr")
+pg.io.save_results(ds, "results.zarr")
 ```
 
 ## Available Statistics
@@ -114,26 +114,26 @@ All statistics properly handle missing data with per-site sample size adjustment
 ### Basic Analysis
 
 ```python
-import many_stats as ms
+import pgstats as pg
 import sgkit as sg
 
 # Load data
 ds = sg.load_dataset("data.zarr")
 
 # Validate dataset
-validation = ms.utils.validate_dataset(ds)
+validation = pg.utils.validate_dataset(ds)
 print(f"Dataset valid: {validation['valid']}")
 
 # Check missing data
-missing_stats = ms.utils.check_missing_data(ds)
+missing_stats = pg.utils.check_missing_data(ds)
 print(f"Missing rate: {missing_stats['missing_rate']:.3f}")
 
 # Calculate statistics
-ds = ms.stats.tajima_d(ds)
-ds = ms.stats.nucleotide_diversity(ds)
+ds = pg.stats.tajima_d(ds)
+ds = pg.stats.nucleotide_diversity(ds)
 
 # Save results
-ms.io.save_results(ds, "analysis_results.csv", format="csv")
+pg.io.save_results(ds, "analysis_results.csv", format="csv")
 ```
 
 ### Working with Large Datasets
@@ -146,7 +146,7 @@ client = Client()
 
 # Your analysis will automatically use the cluster
 ds = sg.load_dataset("large_dataset.zarr")
-results = ms.stats.tajima_d(ds)
+results = pg.stats.tajima_d(ds)
 
 # Close cluster when done
 client.close()
@@ -169,14 +169,14 @@ def custom_statistic(variant_matrix):
     
     return result
 
-# Use with many-stats utilities
-binary_matrix = ms.utils.convert_to_variant_matrix(ds)
+# Use with pgstats utilities
+binary_matrix = pg.utils.convert_to_variant_matrix(ds)
 custom_values = custom_statistic(binary_matrix)
 ```
 
 ## Data Formats
 
-Many-stats supports various genetic data formats through sgkit:
+pgstats supports various genetic data formats through sgkit:
 
 - **Zarr**: Cloud-native format for large datasets
 - **PLINK**: Standard format (.bed, .bim, .fam files)
@@ -187,7 +187,7 @@ Many-stats supports various genetic data formats through sgkit:
 The package includes built-in support for loading VCF files using the bio2zarr package:
 
 ```python
-from many_stats.io.loaders import load_vcf_simple, check_bio2zarr_available
+from pgstats.io.loaders import load_vcf_simple, check_bio2zarr_available
 
 # Check if bio2zarr is available
 if check_bio2zarr_available():
@@ -205,7 +205,7 @@ This approach provides reliable conversion and efficient loading of VCF data wit
 
 ## Performance
 
-Many-stats is optimized for performance:
+pgstats is optimized for performance:
 
 - **Numba JIT compilation**: Critical functions are compiled for speed
 - **Dask integration**: Automatic parallelization for large datasets
@@ -219,22 +219,22 @@ Contributions are welcome! Please see our contributing guidelines for details.
 ### Development Setup
 
 ```bash
-git clone https://github.com/yourusername/many-stats.git
-cd many-stats
+git clone https://github.com/SolomonAPS/pgstats.git
+cd pgstats
 pip install -e ".[dev]"
 pytest  # Run tests
 ```
 
 ## Citation
 
-If you use many-stats in your research, please cite:
+If you use pgstats in your research, please cite:
 
 ```bibtex
-@software{many_stats,
-  title={Many-Stats: A comprehensive statistical genomics toolkit},
+@software{pgstats,
+  title={pgstats: Population Genetics Statistics Toolkit},
   author={Your Name},
   year={2024},
-  url={https://github.com/yourusername/many-stats}
+  url={https://github.com/SolomonAPS/pgstats}
 }
 ```
 

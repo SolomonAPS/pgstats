@@ -7,7 +7,7 @@ import numpy as np
 import sgkit as sg
 import xarray as xr
 
-from many_stats.stats.sfs_statistics import (
+from pgstats.stats.sfs_statistics import (
     # High-level statistics
     tajima_d,
     fu_li_d,

@@ -1,6 +1,6 @@
 # Multi-Region Analysis Example
 
-This example shows how to use the new multi-region analysis functionality in many-stats.
+This example shows how to use the new multi-region analysis functionality in pgstats.
 
 ## Creating a Regions File
 
@@ -18,14 +18,14 @@ chrX    100000     800000     gene4
 
 ```bash
 # Analyze multiple regions with callable sites masking
-many-stats stats genome.vcf.gz \
+pgstats stats genome.vcf.gz \
     --bed callable_sites.bed \
     --regions-file candidate_genes.bed \
     --window-size 10000 \
     --output multi_region_results.csv
 
 # Compare with single region analysis
-many-stats stats genome.vcf.gz \
+pgstats stats genome.vcf.gz \
     --bed callable_sites.bed \
     --region chr1:1000000-2000000 \
     --window-size 10000 \
@@ -35,7 +35,7 @@ many-stats stats genome.vcf.gz \
 ## Python API Usage
 
 ```python
-from many_stats.core.dataset import GenomicDataset, CallableSitesConfig
+from pgstats.core.dataset import GenomicDataset, CallableSitesConfig
 
 # Load dataset with callable sites mask
 genomic_ds = GenomicDataset(

@@ -1,6 +1,6 @@
-# CLI Guide for many-stats
+# CLI Guide for pgstats
 
-Complete guide to using the many-stats command-line interface.
+Complete guide to using the pgstats command-line interface.
 
 ## Table of Contents
 
@@ -13,15 +13,15 @@ Complete guide to using the many-stats command-line interface.
 
 ## Installation
 
-After installing many-stats, the `many-stats` command should be available in your environment:
+After installing pgstats, the `pgstats` command should be available in your environment:
 
 ```bash
 # Install from source
-cd many-stats
+cd pgstats
 pip install -e .
 
 # Verify installation
-many-stats --version
+pgstats --version
 ```
 
 ## Quick Start
@@ -29,13 +29,13 @@ many-stats --version
 ### Basic genome-wide analysis
 
 ```bash
-many-stats stats input.vcf.gz --output results.csv
+pgstats stats input.vcf.gz --output results.csv
 ```
 
 ### Windowed analysis
 
 ```bash
-many-stats stats input.vcf.gz --output results.csv \
+pgstats stats input.vcf.gz --output results.csv \
     --window-size 100000 \
     --step-size 50000
 ```
@@ -43,14 +43,14 @@ many-stats stats input.vcf.gz --output results.csv \
 ### With callable sites filtering
 
 ```bash
-many-stats stats input.vcf.gz --output results.csv \
+pgstats stats input.vcf.gz --output results.csv \
     --bed callable_sites.bed \
     --max-missing 0.1
 ```
 
 ## Commands
 
-### `many-stats stats`
+### `pgstats stats`
 
 Calculate population genetics statistics from VCF files.
 
@@ -81,7 +81,7 @@ Calculate population genetics statistics from VCF files.
 **General Options:**
 - `-v, --verbose` - Increase verbosity (-v for INFO, -vv for DEBUG)
 
-### `many-stats info`
+### `pgstats info`
 
 Display information about a VCF dataset.
 
@@ -91,8 +91,8 @@ Display information about a VCF dataset.
 
 **Example:**
 ```bash
-many-stats info input.vcf.gz
-many-stats info input.vcf.gz --bed callable_sites.bed
+pgstats info input.vcf.gz
+pgstats info input.vcf.gz --bed callable_sites.bed
 ```
 
 ## Common Workflows
@@ -102,7 +102,7 @@ many-stats info input.vcf.gz --bed callable_sites.bed
 Calculate genome-wide statistics without windowing:
 
 ```bash
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output genome_wide_stats.csv \
     --stats tajima_d theta_pi theta_w
 ```
@@ -112,7 +112,7 @@ many-stats stats population.vcf.gz \
 Analyze the genome in 100kb windows with 50kb overlap:
 
 ```bash
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output windowed_stats.csv \
     --window-size 100000 \
     --step-size 50000 \
@@ -124,7 +124,7 @@ many-stats stats population.vcf.gz \
 Apply callable sites masking and missing data filtering:
 
 ```bash
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output filtered_stats.csv \
     --bed callable_10x.bed \
     --max-missing 0.2 \
@@ -137,13 +137,13 @@ Analyze a specific genomic region:
 
 ```bash
 # Whole chromosome
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output chr1_stats.csv \
     --region chr1 \
     --window-size 100000
 
 # Specific region
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output region_stats.csv \
     --region chr1:1000000-5000000 \
     --window-size 50000
@@ -154,7 +154,7 @@ many-stats stats population.vcf.gz \
 Calculate all available statistics:
 
 ```bash
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output all_stats.csv \
     --stats tajima_d fu_li_d fu_li_f \
              theta_pi theta_w theta_h \
@@ -166,7 +166,7 @@ many-stats stats population.vcf.gz \
 Output results as tab-separated values:
 
 ```bash
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output results.tsv \
     --format tsv \
     --window-size 100000
@@ -178,14 +178,14 @@ many-stats stats population.vcf.gz \
 
 ```bash
 # Large windows for low-density data
-many-stats stats sparse_data.vcf.gz \
+pgstats stats sparse_data.vcf.gz \
     --output results.csv \
     --window-size 500000 \
     --step-size 500000 \
     --min-variants 3
 
 # Small, overlapping windows for high-resolution
-many-stats stats dense_data.vcf.gz \
+pgstats stats dense_data.vcf.gz \
     --output results.csv \
     --window-size 10000 \
     --step-size 5000 \
@@ -196,7 +196,7 @@ many-stats stats dense_data.vcf.gz \
 
 ```bash
 # Strict quality filters
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output high_quality_stats.csv \
     --bed high_coverage_sites.bed \
     --max-missing 0.05 \
@@ -210,15 +210,15 @@ Monitor progress and debug issues:
 
 ```bash
 # INFO level logging
-many-stats stats -v input.vcf.gz --output results.csv
+pgstats stats -v input.vcf.gz --output results.csv
 
 # DEBUG level logging
-many-stats stats -vv input.vcf.gz --output results.csv
+pgstats stats -vv input.vcf.gz --output results.csv
 ```
 
 ### Pipeline Integration
 
-Use many-stats in a pipeline:
+Use pgstats in a pipeline:
 
 ```bash
 #!/bin/bash
@@ -227,7 +227,7 @@ Use many-stats in a pipeline:
 for vcf in data/*.vcf.gz; do
     basename=$(basename $vcf .vcf.gz)
     
-    many-stats stats $vcf \
+    pgstats stats $vcf \
         --output results/${basename}_stats.csv \
         --bed callable_sites.bed \
         --window-size 100000 \
@@ -244,7 +244,7 @@ cat results/*_stats.csv > combined_stats.csv
 
 ```bash
 # Calculate diversity across the genome
-many-stats stats sample.vcf.gz \
+pgstats stats sample.vcf.gz \
     --output diversity_scan.csv \
     --stats theta_pi theta_w \
     --window-size 100000 \
@@ -264,7 +264,7 @@ window_start,window_end,n_variants,n_callable_sites,theta_pi,theta_w
 
 ```bash
 # Look for signatures of selection
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output selection_scan.csv \
     --stats tajima_d fu_li_d fu_li_f \
     --window-size 50000 \
@@ -281,7 +281,7 @@ bedtools genomecov -ibam aligned.bam -bg | \
     bedtools merge > callable_10x.bed
 
 # Run analysis with quality filters
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output qc_stats.csv \
     --bed callable_10x.bed \
     --max-missing 0.15 \
@@ -293,13 +293,13 @@ many-stats stats population.vcf.gz \
 
 ```bash
 # Gene region
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output gene_region.csv \
     --region chr2:5000000-5100000 \
     --window-size 10000
 
 # Intergenic region
-many-stats stats population.vcf.gz \
+pgstats stats population.vcf.gz \
     --output intergenic_region.csv \
     --region chr2:10000000-10100000 \
     --window-size 10000
@@ -310,7 +310,7 @@ many-stats stats population.vcf.gz \
 ```bash
 # Process each population separately
 for pop in popA popB popC; do
-    many-stats stats ${pop}.vcf.gz \
+    pgstats stats ${pop}.vcf.gz \
         --output ${pop}_stats.csv \
         --bed callable_sites.bed \
         --window-size 100000 \
@@ -330,13 +330,13 @@ done
 vcf2zarr input.vcf.gz output.zarr
 
 # Analyze multiple times (faster)
-many-stats stats output.zarr --output results1.csv --region chr1
-many-stats stats output.zarr --output results2.csv --region chr2
+pgstats stats output.zarr --output results1.csv --region chr1
+pgstats stats output.zarr --output results2.csv --region chr2
 ```
 
 2. **Increase window size** to reduce computation:
 ```bash
-many-stats stats large.vcf.gz \
+pgstats stats large.vcf.gz \
     --output results.csv \
     --window-size 500000  # Larger windows = faster
 ```
@@ -344,7 +344,7 @@ many-stats stats large.vcf.gz \
 3. **Process chromosomes separately**:
 ```bash
 for chr in {1..22} X Y; do
-    many-stats stats genome.vcf.gz \
+    pgstats stats genome.vcf.gz \
         --output chr${chr}_stats.csv \
         --region chr${chr} \
         --window-size 100000 &
@@ -356,7 +356,7 @@ wait
 
 ```bash
 # More permissive settings
-many-stats stats lowcov.vcf.gz \
+pgstats stats lowcov.vcf.gz \
     --output results.csv \
     --max-missing 0.3 \
     --min-variants 3 \
@@ -372,7 +372,7 @@ many-stats stats lowcov.vcf.gz \
 **Solution:**
 ```bash
 # Use absolute path
-many-stats stats /full/path/to/input.vcf.gz --output results.csv
+pgstats stats /full/path/to/input.vcf.gz --output results.csv
 
 # Or check current directory
 ls *.vcf.gz
@@ -388,7 +388,7 @@ ls *.vcf.gz
 ls -l callable_sites.bed
 
 # Use absolute path if needed
-many-stats stats input.vcf.gz --output results.csv \
+pgstats stats input.vcf.gz --output results.csv \
     --bed /full/path/to/callable_sites.bed
 ```
 
@@ -399,7 +399,7 @@ many-stats stats input.vcf.gz --output results.csv \
 **Solution:**
 ```bash
 # Check VCF chromosomes
-many-stats info input.vcf.gz
+pgstats info input.vcf.gz
 
 # Check BED chromosomes
 cut -f1 callable_sites.bed | sort -u
@@ -415,12 +415,12 @@ sed 's/^/chr/' callable_sites.bed > callable_sites_fixed.bed
 **Solution:**
 ```bash
 # Reduce min-variants threshold
-many-stats stats input.vcf.gz --output results.csv \
+pgstats stats input.vcf.gz --output results.csv \
     --window-size 100000 \
     --min-variants 3  # Lower threshold
 
 # Or increase window size
-many-stats stats input.vcf.gz --output results.csv \
+pgstats stats input.vcf.gz --output results.csv \
     --window-size 500000  # Larger windows
 ```
 
@@ -441,7 +441,7 @@ many-stats stats input.vcf.gz --output results.csv \
 
 # 4. Convert to Zarr first
 vcf2zarr input.vcf.gz output.zarr
-many-stats stats output.zarr --output results.csv
+pgstats stats output.zarr --output results.csv
 ```
 
 ## Output Format
@@ -477,11 +477,11 @@ window_start	window_end	n_variants	tajima_d
 
 ## See Also
 
-### many-stats Documentation
+### pgstats Documentation
 - [Windowing Guide](../examples/windowing_guide.md)
 - [Callable Sites Guide](../examples/callable_sites_guide.md)
 - [API Documentation](../README.md)
-- [GitHub Repository](https://github.com/yourusername/many-stats)
+- [GitHub Repository](https://github.com/yourusername/pgstats)
 
 ### sgkit Resources
 - [sgkit Documentation](https://pystatgen.github.io/sgkit/latest/) - Official sgkit documentation

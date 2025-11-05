@@ -18,13 +18,13 @@ import sgkit as sg
 import time
 from functools import wraps
 
-from many_stats.io.loaders import load_vcf_simple
-from many_stats.stats.sfs_statistics import (
+from pgstats.io.loaders import load_vcf_simple
+from pgstats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
     theta_pi, theta_w, theta_h, theta_l, fay_wu_h
 )
-from many_stats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
-from many_stats.stats.ld_statistics import (
+from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
+from pgstats.stats.ld_statistics import (
     calculate_ld_matrix, calculate_windowed_ld, omega_statistic
 )
 

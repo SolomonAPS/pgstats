@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Main command-line interface for many-stats.
+Main command-line interface for pgstats.
 
 This module provides the main CLI entry point for calculating population genetics
 statistics from VCF files.
@@ -12,8 +12,8 @@ import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-from many_stats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
-from many_stats import __version__
+from pgstats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
+from pgstats import __version__
 
 
 def setup_logging(verbose: int = 0):
@@ -40,52 +40,52 @@ def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser."""
     
     parser = argparse.ArgumentParser(
-        prog='many-stats',
+        prog='pgstats',
         description='Calculate population genetics statistics from VCF files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Calculate genome-wide statistics
-  many-stats stats input.vcf.gz --output results.csv
+  pgstats stats input.vcf.gz --output results.csv
   
   # Windowed analysis with 100kb windows
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --window-size 100000 --step-size 50000
   
   # With callable sites masking
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --bed callable_sites.bed --max-missing 0.1
   
   # Region-specific analysis
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --region chr1:1000000-5000000 --window-size 50000
   
   # Multi-region analysis
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --regions-file candidate_genes.bed --window-size 10000
   
   # Multi-region with callable sites masking
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --bed callable_sites.bed --regions-file target_regions.bed \\
       --window-size 50000 --max-missing 0.1
   
   # With non-callable regions (default behavior)
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --bed repetitive_regions.bed --bed-format non_callable
   
   # With callable regions only
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --bed high_quality_regions.bed --bed-format callable
   
   # Keep Zarr files for faster re-runs (saved next to output file)
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --keep-zarr --window-size 100000
   
   # Specify custom Zarr directory (useful for clusters)
-  many-stats stats input.vcf.gz --output results.csv \\
+  pgstats stats input.vcf.gz --output results.csv \\
       --keep-zarr --zarr-dir /work/users/s/o/solsloat/zarr_cache
 
-For more information, visit: https://github.com/yourusername/many-stats
+For more information, visit: https://github.com/SolomonAPS/pgstats
         """
     )
     
@@ -613,7 +613,7 @@ def run_info_command(args):
     print(f"  Contigs: {summary['n_contigs']:,}")
     
     # Check for missing data
-    from many_stats.utils.validation import check_missing_data
+    from pgstats.utils.validation import check_missing_data
     missing_info = check_missing_data(genomic_ds.dataset)
     
     print(f"\nMissing Data:")

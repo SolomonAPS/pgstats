@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="many-stats",
+    name="pgstats",
     version="0.1.0",
-    description="A comprehensive statistical genomics toolkit built on sgkit",
+    description="Population Genetics Statistics Toolkit - A comprehensive statistical genomics toolkit built on sgkit",
     author="Your Name",
     author_email="your.email@example.com",
     packages=find_packages(),
@@ -22,7 +22,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'many-stats=many_stats.cli.main:main',
+            'pgstats=pgstats.cli.main:main',
         ],
     },
     extras_require={

@@ -9,10 +9,10 @@ import sgkit as sg
 import tempfile
 from pathlib import Path
 
-from many_stats.io.loaders import check_bio2zarr_available, load_zarr
-from many_stats.io.writers import save_csv, save_tsv, save_zarr
-from many_stats.utils.validation import validate_dataset, check_missing_data
-from many_stats.utils.conversion import (
+from pgstats.io.loaders import check_bio2zarr_available, load_zarr
+from pgstats.io.writers import save_csv, save_tsv, save_zarr
+from pgstats.utils.validation import validate_dataset, check_missing_data
+from pgstats.utils.conversion import (
     convert_to_variant_matrix,
     convert_call_to_index,
     convert_genotypes_to_binary,
@@ -200,7 +200,7 @@ class TestResultWriting:
         ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20)
         
         # Add some statistics
-        from many_stats.stats.sfs_statistics import tajima_d
+        from pgstats.stats.sfs_statistics import tajima_d
         ds = tajima_d(ds)
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
@@ -225,7 +225,7 @@ class TestResultWriting:
         """Test saving dataset to TSV."""
         ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20)
         
-        from many_stats.stats.sfs_statistics import theta_pi
+        from pgstats.stats.sfs_statistics import theta_pi
         ds = theta_pi(ds)
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.tsv', delete=False) as f:
@@ -249,7 +249,7 @@ class TestResultWriting:
         """Test saving dataset with multiple statistics."""
         ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20)
         
-        from many_stats.stats.sfs_statistics import tajima_d, theta_pi, theta_w
+        from pgstats.stats.sfs_statistics import tajima_d, theta_pi, theta_w
         
         ds = tajima_d(ds)
         ds = theta_pi(ds)

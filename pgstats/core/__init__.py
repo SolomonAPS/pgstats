@@ -9,5 +9,5 @@ missing data and callable sites.
 # Import the main classes from dataset.py
 from .dataset import GenomicDataset, WindowConfig, CallableSitesConfig
 
-# Make these available when importing from many_stats.core
+# Make these available when importing from pgstats.core
 __all__ = ['GenomicDataset', 'WindowConfig', 'CallableSitesConfig']

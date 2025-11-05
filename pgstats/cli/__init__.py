@@ -1,5 +1,5 @@
 """
-Command-line interface for many-stats.
+Command-line interface for pgstats.
 """
 
 from .main import main

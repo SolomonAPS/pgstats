@@ -1,6 +1,6 @@
-# Windowing Guide for many-stats
+# Windowing Guide for pgstats
 
-This guide explains how to use the windowing functionality in many-stats for population genetics analyses.
+This guide explains how to use the windowing functionality in pgstats for population genetics analyses.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Windowing allows you to calculate population genetics statistics across genomic 
 Calculate statistics for the entire genome as a single unit:
 
 ```python
-from many_stats.core.dataset import GenomicDataset, WindowConfig
+from pgstats.core.dataset import GenomicDataset, WindowConfig
 
 # No windowing - genome-wide
 window_config = WindowConfig(window_size=None)
@@ -82,7 +82,7 @@ window_config = WindowConfig(
 ### Step 1: Configure Windows
 
 ```python
-from many_stats.core.dataset import GenomicDataset, WindowConfig
+from pgstats.core.dataset import GenomicDataset, WindowConfig
 
 window_config = WindowConfig(
     window_size=100000,  # 100kb windows
@@ -239,7 +239,7 @@ WindowConfig(window_size=100000, step_size=100000) # No overlap
 Combine windowing with missing data filtering:
 
 ```python
-from many_stats.core.dataset import CallableSitesConfig
+from pgstats.core.dataset import CallableSitesConfig
 
 callable_config = CallableSitesConfig(max_missing=0.2)
 
@@ -329,7 +329,7 @@ window_config = WindowConfig(
 Complete example for analyzing selection across the genome:
 
 ```python
-from many_stats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
+from pgstats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -373,7 +373,7 @@ plt.savefig('tajima_d_scan.png')
 
 ## See Also
 
-### many-stats Documentation
+### pgstats Documentation
 - [Callable Sites Guide](callable_sites_guide.md)
 - [Statistics Reference](../README.md#available-statistics)
 - [CLI Guide](../docs/CLI_GUIDE.md)

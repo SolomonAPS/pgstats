@@ -9,7 +9,7 @@ import sgkit as sg
 import tempfile
 from pathlib import Path
 
-from many_stats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
+from pgstats.core.dataset import GenomicDataset, WindowConfig, CallableSitesConfig
 
 
 class TestGenomicDatasetInitialization:
