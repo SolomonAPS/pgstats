@@ -83,33 +83,28 @@ dataset.save_results("results.csv")
 
 ## Available Statistics
 
+> **📖 For complete mathematical formulas with proper LaTeX notation, see [docs/EQUATIONS.md](docs/EQUATIONS.md)**
+
 ### Site Frequency Spectrum (SFS) Statistics
 
 #### Theta Estimators (Diversity Measures)
 
-| Statistic | Description | Formula | Reference |
-|-----------|-------------|---------|-----------|
-| **theta_pi** (θπ) | Nucleotide diversity based on pairwise differences | θπ = (1/C(n,2)) × Σ i(n-i)ξᵢ | Walsh & Lynch 2018, Eq. 9.4 |
-| **theta_w** (θw) | Watterson's estimator based on segregating sites | θw = S/a₁ | Walsh & Lynch 2018, Eq. 9.5 |
-| **theta_h** (θh) | Fay-Wu's estimator emphasizing high-frequency alleles | θh = (1/C(n,2)) × Σ i²ξᵢ | Walsh & Lynch 2018, Eq. 9.6 |
-| **theta_l** (θL) | Zeng's estimator emphasizing intermediate frequencies | θL = (1/(n-1)) × Σ iξᵢ | Walsh & Lynch 2018, Eq. 9.7 |
-
-Where:
-- `S` = number of segregating sites
-- `ξᵢ` = number of sites with i derived alleles
-- `n` = sample size
-- `a₁` = Σ(1/i) for i=1 to n-1 (harmonic number)
-- `C(n,2)` = n(n-1)/2
+| Statistic | Description | Reference |
+|-----------|-------------|-----------|
+| **theta_pi** (θπ) | Nucleotide diversity based on pairwise differences | Walsh & Lynch 2018, Eq. 9.4 |
+| **theta_w** (θw) | Watterson's estimator based on segregating sites | Walsh & Lynch 2018, Eq. 9.5 |
+| **theta_h** (θh) | Fay-Wu's estimator emphasizing high-frequency alleles | Walsh & Lynch 2018, Eq. 9.6 |
+| **theta_l** (θL) | Zeng's estimator emphasizing intermediate frequencies | Walsh & Lynch 2018, Eq. 9.7 |
 
 #### Neutrality Tests
 
-| Statistic | Description | Formula | Reference |
-|-----------|-------------|---------|-----------|
-| **tajima_d** | Tests for deviation from neutral evolution | D = (θπ - θw) / √Var(θπ - θw) | Walsh & Lynch 2018, Eq. 9.8 |
-| **fu_li_d** | Tests using singleton frequency (folded) | D* = (S/a₁ - ((n-1)/n)η₁) / √Var(D*) | Walsh & Lynch 2018, Eq. 9.26b |
-| **fu_li_f** | Combines pairwise differences and singletons | F* = (θπ - ((n-1)/n)η₁) / √Var(F*) | Walsh & Lynch 2018, Eq. 9.26e |
-| **zeng_e** | Tests for selective sweeps | E = (θL - θw) / √Var(θL - θw) | Walsh & Lynch 2018, Eq. 9.28c |
-| **fay_wu_h** | Tests for selection using high-frequency alleles | H = (θπ - θh) / √Var(θπ - θh) | Walsh & Lynch 2018, Eq. 9.27b |
+| Statistic | Description | Reference |
+|-----------|-------------|-----------|
+| **tajima_d** | Tests for deviation from neutral evolution | Walsh & Lynch 2018, Eq. 9.8 |
+| **fu_li_d** | Tests using singleton frequency (folded) | Walsh & Lynch 2018, Eq. 9.26b |
+| **fu_li_f** | Combines pairwise differences and singletons | Walsh & Lynch 2018, Eq. 9.26e |
+| **zeng_e** | Tests for selective sweeps | Walsh & Lynch 2018, Eq. 9.28c |
+| **fay_wu_h** | Tests for selection using high-frequency alleles | Walsh & Lynch 2018, Eq. 9.27b |
 
 **Unfolded versions** (require ancestral state information):
 - `fu_li_d_unfolded`: Uses derived allele frequencies
