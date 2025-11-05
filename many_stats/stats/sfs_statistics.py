@@ -368,9 +368,9 @@ def calculate_v_h(n: int, a1: float, a2: float) -> tuple[float, float]:
     Returns:
         tuple: (u_H, v_H) variance components
     """
-    # Calculate b_{n+1} = Σ(1/i²) for i=1 to n = b_n + 1/n²
-    # This is b₁(n+1) in our notation, NOT b₂(n+1)!
-    b_n_plus_1 = calculate_b1(n + 1)
+    # Calculate b_{n+1} = Σ(1/i²) for i=1 to n
+    # This is a₂(n+1) in our notation (harmonic sum of squares)
+    b_n_plus_1 = calculate_a2(n + 1)
     
     # u_H = (n-2) / 6(n-1)
     u_h = (n - 2.0) / (6.0 * (n - 1.0))
@@ -1414,7 +1414,7 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         
         # Calculate harmonic numbers for this window
         a1 = calculate_a1(window_max_n)
-        bn = calculate_b1(window_max_n)  # Use bₙ (harmonic sum), not b₂ (closed-form)
+        bn = calculate_a2(window_max_n)  # bₙ = a₂ = Σ(1/i²) harmonic sum of squares
         
         # Pre-calculate variance components using window_max_n
         # From Walsh & Lynch 2018, Equation 9.28c (page 307)
@@ -1641,7 +1641,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         
         # Debug first window only
         if w_idx == 0:
-            b_n_plus_1 = calculate_b1(window_max_n + 1)
+            b_n_plus_1 = calculate_a2(window_max_n + 1)
             print(f"  fay_wu_h: n={window_max_n}, a1={a1:.4f}, b_{{n+1}}={b_n_plus_1:.4f}, v_h={v_h:.4f}", flush=True)
         
         
