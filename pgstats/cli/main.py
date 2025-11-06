@@ -424,12 +424,23 @@ def run_stats_command(args):
     print(f"Loading VCF: {input_path}", flush=True)
     
     try:
-        # Determine if we're doing multi-region analysis (use lazy masking)
-        use_lazy_masking = regions_list is not None
+        # Determine if we're doing region-based analysis (use lazy masking)
+        # Use lazy masking for both single region (--region) and multi-region (--regions-file)
+        use_lazy_masking = (region_contig is not None) or (regions_list is not None)
+        
+        # Temporarily disable BED loading in __init__ if we'll use lazy mode
+        callable_config_for_init = callable_config
+        if use_lazy_masking and callable_config.bed_file:
+            # Create a config without BED file for __init__, we'll load it lazily after
+            callable_config_for_init = CallableSitesConfig(
+                bed_file=None,  # Don't load in __init__
+                bed_format=callable_config.bed_format,
+                max_missing=callable_config.max_missing
+            )
         
         genomic_ds = GenomicDataset(
             data_source=str(input_path),
-            callable_config=callable_config,
+            callable_config=callable_config_for_init,
             window_config=window_config,
             keep_zarr=args.keep_zarr,
             zarr_dir=args.zarr_dir,
@@ -437,8 +448,10 @@ def run_stats_command(args):
             enable_profiling=args.profile
         )
         
-        # If using BED file with multi-region analysis, use lazy loading
+        # If using BED file with region-based analysis, use lazy loading
         if use_lazy_masking and callable_config.bed_file:
+            # Restore the original callable config with BED file
+            genomic_ds.callable_config = callable_config
             # Load BED in lazy mode (don't mask genome-wide, mask each region individually)
             genomic_ds._load_callable_sites(lazy_mode=True)
         
