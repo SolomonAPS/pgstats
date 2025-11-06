@@ -11,9 +11,9 @@ setup(
     install_requires=[
         "sgkit>=0.10.0",
         "numba>=0.56.0",
-        "numpy>=1.20.0",
+        "numpy>=1.20.0,<3.0.0",
         "dask>=2021.0.0",
-        "xarray>=0.20.0",
+        "xarray>=2023.8.0",  # Required for sgkit 0.10.0 (needs xarray.namedarray module)
         "zarr>=2.10.0",
         "scipy>=1.7.0",
         "pandas>=1.3.0",
