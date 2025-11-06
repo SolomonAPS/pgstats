@@ -287,7 +287,7 @@ class GenomicDataset:
             if cached_mask is not None:
                 # Use cached mask directly
                 self._apply_cached_mask(cached_mask)
-                print(f"Masked non-callable variants: {self.callable_sites:,} variants remaining (from cache)", flush=True)
+                print(f"Using cached BED mask: {self.callable_sites:,} callable variant positions", flush=True)
                 return
         
         # Create non-callable sites mask and apply it (bed_df already loaded above)
@@ -296,8 +296,6 @@ class GenomicDataset:
         # Save mask to cache if enabled
         if cache_path:
             self._save_cached_mask(cache_path, callable_mask)
-        
-        print(f"Masked non-callable variants: {self.callable_sites:,} variants remaining", flush=True)
     
     def _apply_cached_mask(self, callable_mask: np.ndarray):
         """
@@ -380,21 +378,21 @@ class GenomicDataset:
         
         # Create PyRanges object from BED file
         # BED is 0-based, half-open [start, end)
-        # But we need to convert to 1-based VCF coordinates for overlap checking
-        # BED [0, 4829) should match VCF positions 1-4829, so we add 1 to start
+        # PyRanges also uses 0-based, half-open [start, end)
+        # No conversion needed - keep BED coordinates as-is
         bed_gr = pr.PyRanges(
             chromosomes=bed_df['chrom'].astype(str),
-            starts=bed_df['start'].astype(int) + 1,  # Convert to 1-based
-            ends=bed_df['end'].astype(int) + 1       # Make end inclusive in 1-based
+            starts=bed_df['start'].astype(int),  # Keep 0-based
+            ends=bed_df['end'].astype(int)       # Keep 0-based, half-open
         )
         
         # Create DataFrame with variant positions and original indices
         # This is necessary because PyRanges resets indices in overlap results
-        # Keep positions as 1-based since we converted BED to 1-based above
+        # VCF positions are 1-based, need to convert to 0-based for PyRanges
         variants_df = pd.DataFrame({
             'Chromosome': contig_names[contigs].astype(str),
-            'Start': positions,       # Keep 1-based VCF position  
-            'End': positions + 1,     # Make it a half-open interval [pos, pos+1)
+            'Start': positions - 1,   # Convert VCF 1-based to PyRanges 0-based
+            'End': positions,         # VCF position becomes exclusive end in 0-based
             'variant_idx': np.arange(len(positions))  # Track original index
         })
         
@@ -413,9 +411,13 @@ class GenomicDataset:
                 # Get original indices of overlapping variants
                 overlap_indices = overlapping_gr.variant_idx.values
                 callable_mask[overlap_indices] = False
+                n_non_callable = np.sum(~callable_mask)
+                n_callable = np.sum(callable_mask)
+                print(f"BED masking: {n_non_callable:,} variant positions overlap non-callable regions", flush=True)
+                print(f"             {n_callable:,} variant positions remain in callable regions", flush=True)
             else:
-                print("WARNING: No overlaps found between variants and BED regions!", flush=True)
-                print("         Check that chromosome names match between VCF and BED file.", flush=True)
+                # No overlaps - this is expected if variants were called only in callable regions
+                print("BED masking: No variant positions overlap non-callable regions (expected if variants pre-filtered)", flush=True)
         else:  # callable
             # BED defines callable regions - start with none callable, add overlaps
             callable_mask = np.zeros(len(positions), dtype=bool)
@@ -423,13 +425,13 @@ class GenomicDataset:
                 # Get original indices of overlapping variants
                 overlap_indices = overlapping_gr.variant_idx.values
                 callable_mask[overlap_indices] = True
+                n_non_callable = np.sum(~callable_mask)
+                n_callable = np.sum(callable_mask)
+                print(f"BED masking: {n_callable:,} variant positions in callable regions", flush=True)
+                print(f"             {n_non_callable:,} variant positions outside callable regions", flush=True)
             else:
-                print("WARNING: No overlaps found between variants and BED regions!", flush=True)
+                print("WARNING: No variant positions found in callable regions!", flush=True)
                 print("         Check that chromosome names match between VCF and BED file.", flush=True)
-        
-        n_non_callable = np.sum(~callable_mask)
-        n_callable = np.sum(callable_mask)
-        print(f"BED processing complete: {n_callable:,} callable, {n_non_callable:,} non-callable variants", flush=True)
         
         # Set non-callable sites to -1 (missing) in genotype data
         # Use xarray.where() to stay lazy with dask arrays
@@ -462,7 +464,11 @@ class GenomicDataset:
         self.non_callable_mask = non_callable_mask
         self.callable_sites = np.sum(callable_mask)
         
-        print(f"Masked {np.sum(non_callable_mask):,} non-callable sites as missing data", flush=True)
+        n_masked = np.sum(non_callable_mask)
+        if n_masked > 0:
+            print(f"Genotype masking: Set {n_masked:,} variant positions to missing (in non-callable regions)", flush=True)
+        else:
+            print(f"Genotype masking: No variants masked (all in callable regions)", flush=True)
         
         # Return the callable mask for caching
         return callable_mask
@@ -492,10 +498,11 @@ class GenomicDataset:
         contig_names = region_dataset.contig_id.values
         
         # Create PyRanges object for variants in this region
+        # VCF positions are 1-based, need to convert to 0-based for PyRanges
         variants_df = pd.DataFrame({
             'Chromosome': [contig_name] * len(positions),
-            'Start': positions,
-            'End': positions + 1,
+            'Start': positions - 1,   # Convert VCF 1-based to PyRanges 0-based
+            'End': positions,         # VCF position becomes exclusive end in 0-based
             'variant_idx': np.arange(len(positions))
         })
         
@@ -540,9 +547,13 @@ class GenomicDataset:
         
         if self.enable_profiling:
             elapsed = time.time() - start
-            print(f"[Timing] Region BED masking: {elapsed:.2f}s ({n_masked:,} masked)", flush=True)
+            print(f"[Timing] Region BED masking: {elapsed:.2f}s ({n_masked:,} variant positions masked)", flush=True)
         else:
-            print(f"  Masked {n_masked:,} non-callable sites in region ({n_callable:,} callable)", flush=True)
+            if n_masked > 0:
+                print(f"  Region masking: {n_masked:,} variant positions in non-callable regions (genotypes set to missing)", flush=True)
+                print(f"                  {n_callable:,} variant positions in callable regions", flush=True)
+            else:
+                print(f"  Region masking: All {n_callable:,} variant positions in callable regions", flush=True)
         
         return region_dataset
     
@@ -1283,11 +1294,17 @@ class GenomicDataset:
                 
                 # sgkit aligns windows to step boundaries with offset=0 (default)
                 # Find which step-aligned window this variant falls into
-                window_start_pos = (first_variant_pos // step_size) * step_size
-                window_end_pos = window_start_pos + window_size
+                # first_variant_pos is 1-based VCF coordinate
+                window_start_pos_1based = (first_variant_pos // step_size) * step_size
+                window_end_pos_1based = window_start_pos_1based + window_size
                 
-                window_start_positions.append(window_start_pos)
-                window_end_positions.append(window_end_pos)
+                # Convert to 0-based for PyRanges
+                # 1-based [1000, 2000) becomes 0-based [999, 2000)
+                window_start_pos_0based = window_start_pos_1based - 1 if window_start_pos_1based > 0 else 0
+                window_end_pos_0based = window_end_pos_1based
+                
+                window_start_positions.append(window_start_pos_0based)
+                window_end_positions.append(window_end_pos_0based)
                 window_contigs.append(contig_name)
             else:
                 # Empty window
