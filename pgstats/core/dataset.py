@@ -1091,7 +1091,6 @@ class GenomicDataset:
             # Window is valid if any LD statistic was calculated successfully
             valid_windows = np.any(valid_stats, axis=0)
             result_dataset = result_dataset.isel(windows=valid_windows)
-            print(f"Filtered to {len(result_dataset.windows)} windows with valid LD statistics", flush=True)
         
         # Print mean statistics
         # Extract only window-related variables to avoid memory issues
