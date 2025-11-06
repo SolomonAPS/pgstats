@@ -1298,9 +1298,10 @@ class GenomicDataset:
                 window_end_pos_1based = window_start_pos_1based + window_size
                 
                 # Convert to 0-based for PyRanges
-                # 1-based [1000, 2000) becomes 0-based [999, 2000)
+                # 1-based window [1000, 2000) means positions 1000-1999 (inclusive)
+                # In 0-based half-open: [999, 1999) - both boundaries shift by -1
                 window_start_pos_0based = window_start_pos_1based - 1 if window_start_pos_1based > 0 else 0
-                window_end_pos_0based = window_end_pos_1based
+                window_end_pos_0based = window_end_pos_1based - 1
                 
                 window_start_positions.append(window_start_pos_0based)
                 window_end_positions.append(window_end_pos_0based)
