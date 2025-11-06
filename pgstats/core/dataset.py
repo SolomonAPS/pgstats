@@ -882,7 +882,8 @@ class GenomicDataset:
     
     def calculate_windowed_stats(self, 
                                stats: List[str] = None,
-                               use_callable_sites: bool = True) -> xr.Dataset:
+                               use_callable_sites: bool = True,
+                               use_fixed_n: bool = False) -> xr.Dataset:
         """
         Calculate statistics for each window using sgkit's windowed dataset.
         
@@ -951,7 +952,7 @@ class GenomicDataset:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
-                stat_ds = theta_pi(self.windowed_dataset)
+                stat_ds = theta_pi(self.windowed_dataset, use_fixed_n=use_fixed_n)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
                 if self.enable_profiling:
                     elapsed = time.time() - stat_start
@@ -1118,7 +1119,7 @@ class GenomicDataset:
         return result_dataset
     
     
-    def calculate_genome_wide_stats(self, stats: List[str] = None) -> Dict[str, float]:
+    def calculate_genome_wide_stats(self, stats: List[str] = None, use_fixed_n: bool = False) -> Dict[str, float]:
         """
         Calculate genome-wide statistics.
         
@@ -1150,7 +1151,7 @@ class GenomicDataset:
                 result_ds = tajima_d(self.dataset)
                 results[stat] = np.mean(result_ds['tajima_d'].values)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
-                result_ds = theta_pi(self.dataset)
+                result_ds = theta_pi(self.dataset, use_fixed_n=use_fixed_n)
                 results[stat] = np.mean(result_ds['theta_pi'].values)
             elif stat in ['theta_w', 'watterson_theta']:
                 result_ds = theta_w(self.dataset)
@@ -1748,7 +1749,8 @@ class GenomicDataset:
                                     step_size: Optional[int] = None,
                                     stats: List[str] = None,
                                     min_variants: int = 1,
-                                    use_callable_sites: bool = True) -> pd.DataFrame:
+                                    use_callable_sites: bool = True,
+                                    use_fixed_n: bool = False) -> pd.DataFrame:
         """
         Calculate statistics for multiple genomic regions.
         
@@ -1859,7 +1861,8 @@ class GenomicDataset:
                 # Calculate statistics
                 region_stats = self.calculate_windowed_stats(
                     stats=stats,
-                    use_callable_sites=use_callable_sites
+                    use_callable_sites=use_callable_sites,
+                    use_fixed_n=use_fixed_n
                 )
                 
                 # Convert to DataFrame - only extract window-related variables

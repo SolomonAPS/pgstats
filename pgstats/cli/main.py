@@ -230,6 +230,11 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         help='Maximum proportion of missing data per variant (default: 0.0)'
     )
     filter_group.add_argument(
+        '--fixed-sample-size',
+        action='store_true',
+        help='Use fixed maximum sample size for theta_pi calculation (like SFS-based stats). Default uses per-site sample sizes.'
+    )
+    filter_group.add_argument(
         '--keep-zarr',
         action='store_true',
         help='Keep intermediate Zarr files for faster re-runs. Files saved next to output file by default.'
@@ -507,7 +512,8 @@ def run_stats_command(args):
                 step_size=args.step_size,
                 stats=stats_to_calculate,
                 min_variants=args.min_variants,
-                use_callable_sites=True
+                use_callable_sites=True,
+                use_fixed_n=args.fixed_sample_size
             )
             
             print(f"  Calculated statistics for {len(results_df)} total windows")
@@ -535,7 +541,8 @@ def run_stats_command(args):
             print(f"\nStarting statistics calculation...")
             window_stats = genomic_ds.calculate_windowed_stats(
                 stats=stats_to_calculate,
-                use_callable_sites=True
+                use_callable_sites=True,
+                use_fixed_n=args.fixed_sample_size
             )
             print(f"  Calculated statistics for {len(window_stats.windows)} windows")
             

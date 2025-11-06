@@ -423,9 +423,11 @@ def calculate_callable_sites_per_window(variant_matrix: np.ndarray) -> int:
 @numba.njit
 def calculate_pi(variant_matrix: np.ndarray) -> float:
     """
-    Calculate π (theta_pi), average number of pairwise differences.
+    Calculate π (theta_pi), average number of pairwise differences with per-site sample sizes.
     From Wakeley (2009) Coalescent Theory, equation 4.39:
     π = 1/(n choose 2) * sum(i(n-i)ξᵢ) from i=1 to n-1
+    
+    This version accounts for missing data by using the actual sample size at each site.
     
     Args:
         variant_matrix: numpy array where rows are positions and columns are samples
@@ -451,6 +453,47 @@ def calculate_pi(variant_matrix: np.ndarray) -> float:
             n_pairs = (non_missing * (non_missing - 1)) / 2.0
             pi_site = (derived_count * (non_missing - derived_count)) / n_pairs
             total_pi += pi_site
+    
+    return total_pi
+
+
+@numba.njit
+def calculate_pi_fixed_n(variant_matrix: np.ndarray, n_max: int) -> float:
+    """
+    Calculate π (theta_pi) using a fixed sample size for all sites.
+    From Wakeley (2009) Coalescent Theory, equation 4.39:
+    π = 1/(n choose 2) * sum(i(n-i)ξᵢ) from i=1 to n-1
+    
+    This version uses a fixed n (typically the maximum sample size in the window)
+    for all sites, treating sites with missing data as if they had the full sample.
+    This matches the approach used for variance calculations in neutrality tests.
+    
+    Args:
+        variant_matrix: numpy array where rows are positions and columns are samples
+                       0 = ancestral, 1 = derived, -1 = missing
+        n_max: Fixed sample size to use for all sites
+        
+    Returns:
+        float: π value
+    """
+    n_variants, n_samples = variant_matrix.shape
+    total_pi = 0.0
+    
+    if n_max <= 1:
+        return 0.0
+    
+    n_pairs = (n_max * (n_max - 1)) / 2.0
+    
+    for i in range(n_variants):
+        # Count derived alleles for this site (ignoring missing data)
+        derived_count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] == 1:
+                derived_count += 1
+        
+        # Calculate pi for this site using fixed n
+        pi_site = (derived_count * (n_max - derived_count)) / n_pairs
+        total_pi += pi_site
     
     return total_pi
 
@@ -646,7 +689,7 @@ def calculate_theta_l_per_site(variant_matrix: np.ndarray) -> float:
 # HIGH-LEVEL THETA ESTIMATORS (USER-FACING)
 # =============================================================================
 
-def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
+def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype", use_fixed_n: bool = False) -> xr.Dataset:
     """
     Calculate theta_pi (θπ) - nucleotide diversity based on pairwise differences.
     
@@ -665,6 +708,8 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
+        use_fixed_n: If True, use fixed maximum sample size per window (like SFS-based stats).
+                     If False (default), use per-site sample sizes for missing data.
         
     Returns:
         Dataset with theta_pi values
@@ -699,8 +744,22 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         window_stop = window_stops[w_idx]
         window_variant_matrix = variant_matrix[window_start:window_stop, :]
         
-        # Calculate θπ for the entire window
-        pi_values[w_idx] = calculate_pi(window_variant_matrix)
+        if use_fixed_n:
+            # Calculate max sample size for this window (like SFS-based stats)
+            window_max_n = 0
+            for i in range(len(window_variant_matrix)):
+                site_n = 0
+                for j in range(n_samples):
+                    if window_variant_matrix[i, j] != -1:
+                        site_n += 1
+                if site_n > window_max_n:
+                    window_max_n = site_n
+            
+            # Calculate θπ using fixed n
+            pi_values[w_idx] = calculate_pi_fixed_n(window_variant_matrix, window_max_n)
+        else:
+            # Calculate θπ with per-site sample sizes (default)
+            pi_values[w_idx] = calculate_pi(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
