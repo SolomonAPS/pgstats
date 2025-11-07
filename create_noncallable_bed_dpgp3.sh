@@ -7,6 +7,7 @@ set -e
 
 # Configuration
 VCF_DIR="/proj/johrilab/projects/DFEpos/dpgp3/vcf"
+REF_FAI="/proj/johrilab/projects/DFEpos/dpgp3/reference/dmel_r5.fasta.fai"
 OUTPUT_BED="/proj/johrilab/projects/DFEpos/dpgp3/masking/non_callable_sites_corrected.bed"
 TEMP_DIR=$(mktemp -d)
 
@@ -16,9 +17,16 @@ echo "=========================================="
 echo ""
 echo "Strategy: Non-callable = gaps between positions in all-sites VCF"
 echo "VCF directory: $VCF_DIR"
+echo "Reference FAI: $REF_FAI"
 echo "Output BED: $OUTPUT_BED"
 echo "Temp directory: $TEMP_DIR"
 echo ""
+
+# Check if FAI file exists
+if [ ! -f "$REF_FAI" ]; then
+    echo "ERROR: Reference FAI file not found: $REF_FAI"
+    exit 1
+fi
 
 # Check if bcftools is available
 if ! command -v bcftools &> /dev/null; then
@@ -32,23 +40,19 @@ if ! command -v bedtools &> /dev/null; then
     exit 1
 fi
 
-# Get chromosome lengths from FASTA files
+# Get chromosome lengths from FAI file
 declare -A CHR_LENGTHS
 
-echo "Reading chromosome lengths from FASTA files..."
-for CHR in 2L 2R 3L 3R; do
-    FASTA_FILE="${VCF_DIR}/dpgp3_${CHR}.fasta"
-    CHROM_NAME="chr${CHR}"
-    
-    if [ -f "$FASTA_FILE" ]; then
-        # Get length from FASTA (count all non-header lines)
-        LENGTH=$(grep -v "^>" "$FASTA_FILE" | tr -d '\n' | wc -c | tr -d ' ')
-        CHR_LENGTHS[$CHROM_NAME]=$LENGTH
-        echo "  ${CHROM_NAME}: $LENGTH bp"
-    else
-        echo "  WARNING: FASTA not found: $FASTA_FILE"
-    fi
-done
+echo "Reading chromosome lengths from FAI file..."
+while read -r chrom length rest; do
+    # Map chromosome names (FAI uses "2L", VCF uses "chr2L")
+    case "$chrom" in
+        2L) CHR_LENGTHS["chr2L"]=$length; echo "  chr2L: $length bp" ;;
+        2R) CHR_LENGTHS["chr2R"]=$length; echo "  chr2R: $length bp" ;;
+        3L) CHR_LENGTHS["chr3L"]=$length; echo "  chr3L: $length bp" ;;
+        3R) CHR_LENGTHS["chr3R"]=$length; echo "  chr3R: $length bp" ;;
+    esac
+done < "$REF_FAI"
 echo ""
 
 # Process each chromosome arm
