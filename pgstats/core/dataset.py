@@ -969,14 +969,14 @@ class GenomicDataset:
                 # Calculate both folded (D*) and unfolded (D) versions
                 stat_ds_folded = fu_li_d(self.windowed_dataset, folded=True)
                 stat_ds_unfolded = fu_li_d(self.windowed_dataset, folded=False)
-                result_dataset = result_dataset.merge(stat_ds_folded)
-                result_dataset = result_dataset.merge(stat_ds_unfolded)
+                result_dataset = result_dataset.merge(stat_ds_folded, compat='override')
+                result_dataset = result_dataset.merge(stat_ds_unfolded, compat='override')
             elif stat == 'fu_li_f':
                 # Calculate both folded (F*) and unfolded (F) versions
                 stat_ds_folded = fu_li_f(self.windowed_dataset, folded=True)
                 stat_ds_unfolded = fu_li_f(self.windowed_dataset, folded=False)
-                result_dataset = result_dataset.merge(stat_ds_folded)
-                result_dataset = result_dataset.merge(stat_ds_unfolded)
+                result_dataset = result_dataset.merge(stat_ds_folded, compat='override')
+                result_dataset = result_dataset.merge(stat_ds_unfolded, compat='override')
             elif stat == 'fu_li_d_unfolded':
                 # Alias for fu_li_d - already calculated above
                 pass
