@@ -1,5 +1,6 @@
 #!/bin/bash
 # Script to create a non-callable sites BED file from DPGP3 all-sites VCFs
+# Non-callable sites are positions NOT present in the all-sites VCF (gaps between variants)
 # Processes 2L, 2R, 3L, 3R separately and concatenates them
 
 set -e
@@ -13,6 +14,7 @@ echo "=========================================="
 echo "Creating Non-Callable Sites BED File"
 echo "=========================================="
 echo ""
+echo "Strategy: Non-callable = gaps between positions in all-sites VCF"
 echo "VCF directory: $VCF_DIR"
 echo "Output BED: $OUTPUT_BED"
 echo "Temp directory: $TEMP_DIR"
@@ -30,15 +32,25 @@ if ! command -v bedtools &> /dev/null; then
     exit 1
 fi
 
+# Chromosome lengths (Drosophila melanogaster dm6)
+declare -A CHR_LENGTHS
+CHR_LENGTHS["chr2L"]=23513712
+CHR_LENGTHS["chr2R"]=25286936
+CHR_LENGTHS["chr3L"]=28110227
+CHR_LENGTHS["chr3R"]=32079331
+
 # Process each chromosome arm
 for CHR in 2L 2R 3L 3R; do
     VCF_FILE="${VCF_DIR}/dpgp3_${CHR}_mono_biallelic.vcf.gz"
     TEMP_BED="${TEMP_DIR}/${CHR}_noncallable.bed"
+    CHROM_NAME="chr${CHR}"
+    CHROM_LENGTH=${CHR_LENGTHS[$CHROM_NAME]}
     
     echo "=========================================="
     echo "Processing chromosome ${CHR}"
     echo "=========================================="
     echo "Input: $VCF_FILE"
+    echo "Chromosome length: $CHROM_LENGTH bp"
     
     if [ ! -f "$VCF_FILE" ]; then
         echo "WARNING: VCF file not found: $VCF_FILE"
@@ -46,51 +58,35 @@ for CHR in 2L 2R 3L 3R; do
         continue
     fi
     
-    echo "Extracting non-callable sites..."
+    echo "Extracting callable positions..."
     
-    # Extract sites where any sample has missing genotype (.)
-    # In this VCF format, missing genotypes are just "." not "./."
+    # Extract all positions from VCF (these are callable)
+    # Convert to 0-based BED format for each position
     bcftools view -H "$VCF_FILE" | \
-    awk -v OFS="\t" '
-    {
-        chrom = $1
+    awk -v OFS="\t" '{
         pos = $2  # 1-based VCF position
-        
-        # Check if any sample (columns 10+) has missing genotype
-        is_noncallable = 0
-        for (i = 10; i <= NF; i++) {
-            # Split on : to get GT field
-            split($i, gt_fields, ":")
-            gt = gt_fields[1]
-            
-            # Check if genotype is missing (just "." or contains ".")
-            if (gt == "." || gt ~ /^\./) {
-                is_noncallable = 1
-                break
-            }
-        }
-        
-        # Output as BED (0-based, half-open)
-        if (is_noncallable) {
-            bed_start = pos - 1  # Convert 1-based to 0-based
-            bed_end = pos        # Half-open interval
-            print chrom, bed_start, bed_end
-        }
-    }' > "$TEMP_BED"
+        bed_start = pos - 1  # 0-based
+        bed_end = pos        # half-open
+        print $1, bed_start, bed_end
+    }' | sort -k1,1 -k2,2n > "${TEMP_DIR}/${CHR}_callable.bed"
     
-    # Count sites
-    NONCALLABLE_SITES=$(wc -l < "$TEMP_BED")
-    echo "  Non-callable sites found: $NONCALLABLE_SITES"
+    CALLABLE_SITES=$(wc -l < "${TEMP_DIR}/${CHR}_callable.bed")
+    echo "  Callable sites in VCF: $CALLABLE_SITES"
     
-    # Merge adjacent sites
-    echo "  Merging adjacent sites..."
-    bedtools merge -i "$TEMP_BED" > "${TEMP_BED}.merged"
-    mv "${TEMP_BED}.merged" "$TEMP_BED"
+    # Create a BED file for the entire chromosome
+    echo -e "${CHROM_NAME}\t0\t${CHROM_LENGTH}" > "${TEMP_DIR}/${CHR}_whole.bed"
     
+    # Subtract callable sites from whole chromosome to get non-callable regions
+    echo "  Finding gaps (non-callable regions)..."
+    bedtools subtract -a "${TEMP_DIR}/${CHR}_whole.bed" -b "${TEMP_DIR}/${CHR}_callable.bed" > "$TEMP_BED"
+    
+    # Count non-callable regions
     NONCALLABLE_REGIONS=$(wc -l < "$TEMP_BED")
     NONCALLABLE_BP=$(awk '{sum += $3-$2} END {print sum+0}' "$TEMP_BED")
+    CALLABLE_BP=$((CHROM_LENGTH - NONCALLABLE_BP))
     
-    echo "  Non-callable regions (merged): $NONCALLABLE_REGIONS"
+    echo "  Callable bases: $CALLABLE_BP"
+    echo "  Non-callable regions: $NONCALLABLE_REGIONS"
     echo "  Non-callable bases: $NONCALLABLE_BP"
     echo ""
 done
@@ -130,4 +126,3 @@ echo ""
 echo "=========================================="
 echo "Done!"
 echo "=========================================="
-
