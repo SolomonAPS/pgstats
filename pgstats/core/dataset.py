@@ -1228,6 +1228,9 @@ class GenomicDataset:
             print(f"Warning: Window count mismatch: {num_windows} windows vs {num_callable_sites} callable sites. Skipping normalization.", flush=True)
             return result
         
+        # Store callable sites per window in the dataset for output
+        result['callable_sites'] = (('windows',), callable_sites_per_window)
+        
         for stat in theta_stats:
             if stat in result.data_vars:
                 # Normalize each window's values by its callable sites
@@ -1618,6 +1621,7 @@ class GenomicDataset:
             stat_names = [
                 'tajima_d', 'fu_li_d', 'fu_li_f', 'zeng_e', 'fay_wu_h',
                 'theta_pi', 'theta_w', 'theta_h', 'theta_l',
+                'callable_sites',  # Add callable sites to output
                 # Backward compatibility
                 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta', 'pi'
             ]
