@@ -1916,6 +1916,10 @@ class GenomicDataset:
                 if 'n_variants' in region_stats.data_vars:
                     region_data['n_variants'] = region_stats.n_variants.values
                 
+                # Add callable_sites if present (for diagnostic purposes)
+                if 'callable_sites' in region_stats.data_vars:
+                    region_data['callable_sites'] = region_stats.callable_sites.values
+                
                 # Create DataFrame
                 region_df = pd.DataFrame(region_data)
                 
