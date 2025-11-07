@@ -32,12 +32,24 @@ if ! command -v bedtools &> /dev/null; then
     exit 1
 fi
 
-# Chromosome lengths (Drosophila melanogaster dm6)
+# Get chromosome lengths from FASTA files
 declare -A CHR_LENGTHS
-CHR_LENGTHS["chr2L"]=23513712
-CHR_LENGTHS["chr2R"]=25286936
-CHR_LENGTHS["chr3L"]=28110227
-CHR_LENGTHS["chr3R"]=32079331
+
+echo "Reading chromosome lengths from FASTA files..."
+for CHR in 2L 2R 3L 3R; do
+    FASTA_FILE="${VCF_DIR}/dpgp3_${CHR}.fasta"
+    CHROM_NAME="chr${CHR}"
+    
+    if [ -f "$FASTA_FILE" ]; then
+        # Get length from FASTA (count all non-header lines)
+        LENGTH=$(grep -v "^>" "$FASTA_FILE" | tr -d '\n' | wc -c | tr -d ' ')
+        CHR_LENGTHS[$CHROM_NAME]=$LENGTH
+        echo "  ${CHROM_NAME}: $LENGTH bp"
+    else
+        echo "  WARNING: FASTA not found: $FASTA_FILE"
+    fi
+done
+echo ""
 
 # Process each chromosome arm
 for CHR in 2L 2R 3L 3R; do
@@ -45,6 +57,12 @@ for CHR in 2L 2R 3L 3R; do
     TEMP_BED="${TEMP_DIR}/${CHR}_noncallable.bed"
     CHROM_NAME="chr${CHR}"
     CHROM_LENGTH=${CHR_LENGTHS[$CHROM_NAME]}
+    
+    if [ -z "$CHROM_LENGTH" ]; then
+        echo "ERROR: Chromosome length not found for ${CHROM_NAME}"
+        echo "Skipping..."
+        continue
+    fi
     
     echo "=========================================="
     echo "Processing chromosome ${CHR}"
