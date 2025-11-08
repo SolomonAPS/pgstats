@@ -53,17 +53,10 @@ def apply_missingness_to_vcf(sim_vcf_path, profile, output_path, n_subsample=Non
         profile: Missingness profile dict from load_missingness_profile()
         output_path: Output VCF path
         n_subsample: Number of individuals to subsample (must be <= profile['n_individuals'])
-        seed: Random seed (unused - kept for API compatibility)
-    
-    Note:
-        Missingness matching is EXACT and DETERMINISTIC:
-        - sim_individual[0] gets real_individual[0]'s exact missing sites
-        - sim_individual[1] gets real_individual[1]'s exact missing sites
-        - etc.
-        No randomness in the missingness pattern application.
+        seed: Random seed for reproducibility
     """
-    # Note: seed parameter kept for API compatibility but not used
-    # Matching is deterministic: first N individuals from both datasets
+    if seed is not None:
+        np.random.seed(seed)
     
     print(f"\nReading simulated VCF: {sim_vcf_path}", file=sys.stderr)
     
@@ -97,13 +90,12 @@ def apply_missingness_to_vcf(sim_vcf_path, profile, output_path, n_subsample=Non
     
     print(f"\nSubsampling to {n_subsample} individuals", file=sys.stderr)
     
-    # Take first n_subsample individuals (no randomness in matching)
-    # Simulated individuals are already randomly generated, so taking first N is fine
-    sim_indices = np.arange(n_subsample)
-    real_indices = np.arange(n_subsample)
+    # Randomly select individuals from sim and real
+    sim_indices = np.random.choice(n_sim_individuals, size=n_subsample, replace=False)
+    real_indices = np.random.choice(n_real, size=n_subsample, replace=False)
     
-    print(f"  Using first {n_subsample} individuals from both sim and real data", file=sys.stderr)
-    print(f"  Each sim individual will get exact missingness pattern from corresponding real individual", file=sys.stderr)
+    print(f"  Sim individuals selected: {sim_indices}", file=sys.stderr)
+    print(f"  Real individuals matched: {real_indices}", file=sys.stderr)
     
     # Subsample simulated genotypes
     sim_gt_sub = sim_gt[:, sim_indices, :]  # Shape: [n_sites, n_subsample, ploidy]
