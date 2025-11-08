@@ -70,8 +70,8 @@ if [ ! -f "$VCF_FILE" ]; then
     exit 1
 fi
 
-# Output file
-OUTPUT_FILE="${OUTPUT_DIR}/region_${SLURM_ARRAY_TASK_ID}_missingness.npz"
+# Output file with region info
+OUTPUT_FILE="${OUTPUT_DIR}/region_${SLURM_ARRAY_TASK_ID}_${CHROM}_${START_1BASED}_${END_1BASED}.npz"
 
 echo "=========================================="
 echo "Creating Missingness Profile"
