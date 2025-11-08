@@ -25,7 +25,10 @@ import os
 
 def load_missingness_profile(profile_path):
     """Load pre-computed missingness profile."""
+    print(f"\n{'='*60}", file=sys.stderr)
     print(f"Loading missingness profile: {profile_path}", file=sys.stderr)
+    print(f"{'='*60}", file=sys.stderr)
+    
     data = np.load(profile_path, allow_pickle=True)
     
     profile = {
@@ -37,9 +40,21 @@ def load_missingness_profile(profile_path):
         'missing_sites_per_individual': data['missing_sites_per_individual']
     }
     
-    print(f"  Real data individuals: {profile['n_individuals']}", file=sys.stderr)
-    print(f"  Real data sites: {profile['n_sites']:,}", file=sys.stderr)
+    print(f"\nProfile summary:", file=sys.stderr)
+    print(f"  Individuals: {profile['n_individuals']}", file=sys.stderr)
+    print(f"  Sites: {profile['n_sites']:,}", file=sys.stderr)
     print(f"  Mean missingness: {np.mean(profile['missingness_rate']):.4f}", file=sys.stderr)
+    print(f"  Min missingness: {np.min(profile['missingness_rate']):.4f}", file=sys.stderr)
+    print(f"  Max missingness: {np.max(profile['missingness_rate']):.4f}", file=sys.stderr)
+    
+    # Show first few individuals
+    print(f"\nFirst 3 individuals in profile:", file=sys.stderr)
+    for i in range(min(3, profile['n_individuals'])):
+        n_missing = len(profile['missing_sites_per_individual'][i])
+        rate = profile['missingness_rate'][i]
+        print(f"  {profile['individual_ids'][i]}: {rate:.4f} ({n_missing:,} / {profile['n_sites']:,} sites)", file=sys.stderr)
+    
+    print(f"{'='*60}\n", file=sys.stderr)
     
     return profile
 
@@ -131,11 +146,73 @@ def apply_missingness_to_vcf(sim_vcf_path, profile, output_path, n_subsample=Non
     final_missing_mask = np.any(sim_gt_sub == -1, axis=2)
     final_missingness = np.mean(final_missing_mask, axis=0)
     
-    print(f"\nFinal per-individual missingness:", file=sys.stderr)
-    for i, (sample, rate) in enumerate(zip(sim_samples_sub, final_missingness)):
+    print(f"\n{'='*60}", file=sys.stderr)
+    print(f"VALIDATION: Missingness Matching Results", file=sys.stderr)
+    print(f"{'='*60}", file=sys.stderr)
+    
+    # Overall statistics
+    target_mean_missingness = np.mean([profile['missingness_rate'][i] for i in real_indices])
+    actual_mean_missingness = np.mean(final_missingness)
+    
+    print(f"\nOverall missingness:", file=sys.stderr)
+    print(f"  Target (from real data): {target_mean_missingness:.4f}", file=sys.stderr)
+    print(f"  Actual (in sim data):    {actual_mean_missingness:.4f}", file=sys.stderr)
+    print(f"  Difference:              {abs(actual_mean_missingness - target_mean_missingness):.6f}", file=sys.stderr)
+    
+    # Per-individual comparison
+    print(f"\nPer-individual missingness (first 5 and last 5):", file=sys.stderr)
+    print(f"  {'Sim Sample':<15} {'Real Sample':<15} {'Target':<10} {'Actual':<10} {'Diff':<10} {'Match?'}", file=sys.stderr)
+    print(f"  {'-'*80}", file=sys.stderr)
+    
+    max_diff = 0
+    all_match = True
+    
+    # Show first 5
+    for i in range(min(5, n_subsample)):
+        sample = sim_samples_sub[i]
         real_sample = profile['individual_ids'][real_indices[i]]
-        real_rate = profile['missingness_rate'][real_indices[i]]
-        print(f"  {sample} (matched to {real_sample}): {rate:.4f} (target: {real_rate:.4f})", file=sys.stderr)
+        target = profile['missingness_rate'][real_indices[i]]
+        actual = final_missingness[i]
+        diff = abs(actual - target)
+        match = diff < 0.0001  # Allow tiny floating point errors
+        
+        max_diff = max(max_diff, diff)
+        all_match = all_match and match
+        
+        print(f"  {sample:<15} {real_sample:<15} {target:<10.4f} {actual:<10.4f} {diff:<10.6f} {'✓' if match else '✗'}", file=sys.stderr)
+    
+    if n_subsample > 10:
+        print(f"  {'...':<15} {'...':<15} {'...':<10} {'...':<10} {'...':<10}", file=sys.stderr)
+    
+    # Show last 5
+    for i in range(max(5, n_subsample - 5), n_subsample):
+        if i < 5:  # Skip if already shown above
+            continue
+        sample = sim_samples_sub[i]
+        real_sample = profile['individual_ids'][real_indices[i]]
+        target = profile['missingness_rate'][real_indices[i]]
+        actual = final_missingness[i]
+        diff = abs(actual - target)
+        match = diff < 0.0001
+        
+        max_diff = max(max_diff, diff)
+        all_match = all_match and match
+        
+        print(f"  {sample:<15} {real_sample:<15} {target:<10.4f} {actual:<10.4f} {diff:<10.6f} {'✓' if match else '✗'}", file=sys.stderr)
+    
+    print(f"\n{'='*60}", file=sys.stderr)
+    print(f"VALIDATION SUMMARY:", file=sys.stderr)
+    print(f"{'='*60}", file=sys.stderr)
+    print(f"  Maximum difference: {max_diff:.6f}", file=sys.stderr)
+    print(f"  All individuals match: {'YES ✓' if all_match else 'NO ✗'}", file=sys.stderr)
+    
+    if not all_match:
+        print(f"\n  WARNING: Some individuals have missingness mismatch!", file=sys.stderr)
+        print(f"  This could indicate a problem with position matching.", file=sys.stderr)
+    else:
+        print(f"\n  SUCCESS: Missingness patterns match exactly! ✓", file=sys.stderr)
+    
+    print(f"{'='*60}\n", file=sys.stderr)
     
     # Write output VCF
     print(f"\nWriting output VCF: {output_path}", file=sys.stderr)
