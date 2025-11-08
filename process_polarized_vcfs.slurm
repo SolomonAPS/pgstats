@@ -22,25 +22,25 @@ module load bcftools
 module load bedtools
 
 # Configuration
-VCF_DIR="/proj/johrilab/projects/DFEpos/dpgp3/vcf"
+BASE_DIR="/proj/johrilab/projects/DFEpos/dpgp3/test_adaptive_priors"
 REF_FAI="/proj/johrilab/projects/DFEpos/dpgp3/reference/dmel_r5.fasta.fai"
-OUTPUT_DIR="${VCF_DIR}/processed"
-BED_OUTPUT="/proj/johrilab/projects/DFEpos/dpgp3/masking/non_callable_sites_from_polarized.bed"
+OUTPUT_DIR="${BASE_DIR}/processed_11"
+BED_OUTPUT="${BASE_DIR}/non_callable_sites_11.bed"
 
 mkdir -p "$OUTPUT_DIR"
 
 echo "=========================================="
-echo "Processing Polarized VCFs"
+echo "Processing Polarized VCFs (n=11)"
 echo "=========================================="
 echo ""
-echo "Input directory: $VCF_DIR"
+echo "Base directory: $BASE_DIR"
 echo "Output directory: $OUTPUT_DIR"
 echo "BED output: $BED_OUTPUT"
 echo ""
 
 # Process each chromosome
 for CHR in 2L 2R 3L 3R; do
-    INPUT_VCF="${VCF_DIR}/dpgp3_${CHR}.vcf.gz"
+    INPUT_VCF="${BASE_DIR}/results_${CHR}_11/polarized_${CHR}_n11.vcf.gz"
     
     # Output files
     ALL_SITES_VCF="${OUTPUT_DIR}/dpgp3_${CHR}_polarized_clean.vcf.gz"
