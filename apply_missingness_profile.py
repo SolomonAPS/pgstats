@@ -212,6 +212,55 @@ def apply_missingness_to_vcf(sim_vcf_path, profile, output_path, n_subsample=Non
     else:
         print(f"\n  SUCCESS: Missingness patterns match exactly! ✓", file=sys.stderr)
     
+    print(f"{'='*60}", file=sys.stderr)
+    
+    # Site-by-site verification for first individual
+    print(f"\nSITE-BY-SITE VERIFICATION (checking for off-by-one errors):", file=sys.stderr)
+    print(f"{'='*60}", file=sys.stderr)
+    
+    # Check first individual's first few missing sites
+    first_real_idx = real_indices[0]
+    first_sim_idx = 0
+    missing_sites_indices = profile['missing_sites_per_individual'][first_real_idx]
+    
+    if len(missing_sites_indices) > 0:
+        print(f"\nIndividual: {sim_samples_sub[0]} matched to {profile['individual_ids'][first_real_idx]}", file=sys.stderr)
+        print(f"Checking first 5 missing sites:", file=sys.stderr)
+        print(f"  {'Site Index':<12} {'Position':<12} {'Expected':<12} {'Actual':<12} {'Match?'}", file=sys.stderr)
+        print(f"  {'-'*60}", file=sys.stderr)
+        
+        for i in range(min(5, len(missing_sites_indices))):
+            site_idx = missing_sites_indices[i]
+            if site_idx < len(sim_positions):
+                position = sim_positions[site_idx]
+                expected_missing = True  # Should be missing
+                actual_missing = np.any(sim_gt_sub[site_idx, first_sim_idx, :] == -1)
+                match = expected_missing == actual_missing
+                
+                print(f"  {site_idx:<12} {position:<12} {'Missing':<12} {'Missing' if actual_missing else 'Called':<12} {'✓' if match else '✗'}", file=sys.stderr)
+        
+        # Also check a few sites that should NOT be missing
+        print(f"\nChecking 3 sites that should be CALLED (not missing):", file=sys.stderr)
+        print(f"  {'Site Index':<12} {'Position':<12} {'Expected':<12} {'Actual':<12} {'Match?'}", file=sys.stderr)
+        print(f"  {'-'*60}", file=sys.stderr)
+        
+        # Find sites that are NOT in the missing list
+        all_sites = set(range(len(sim_positions)))
+        missing_sites_set = set(missing_sites_indices)
+        called_sites = list(all_sites - missing_sites_set)
+        
+        for i in range(min(3, len(called_sites))):
+            site_idx = called_sites[i]
+            if site_idx < len(sim_positions):
+                position = sim_positions[site_idx]
+                expected_missing = False  # Should be called
+                actual_missing = np.any(sim_gt_sub[site_idx, first_sim_idx, :] == -1)
+                match = expected_missing == actual_missing
+                
+                print(f"  {site_idx:<12} {position:<12} {'Called':<12} {'Missing' if actual_missing else 'Called':<12} {'✓' if match else '✗'}", file=sys.stderr)
+    else:
+        print(f"\nFirst individual has no missing sites - cannot verify site-by-site.", file=sys.stderr)
+    
     print(f"{'='*60}\n", file=sys.stderr)
     
     # Write output VCF
