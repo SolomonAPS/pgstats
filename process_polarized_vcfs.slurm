@@ -56,10 +56,11 @@ for CHR in 2L 2R 3L 3R; do
         continue
     fi
     
-    # Step 1: Remove outgroup samples and clean INFO fields
-    echo "  Step 1: Removing outgroups and cleaning INFO..."
+    # Step 1: Remove outgroup samples, clean INFO, and trim unused ALT alleles
+    echo "  Step 1: Removing outgroups, cleaning INFO, and trimming unused ALT alleles..."
     bcftools view -s ^droSim1,droYak2 "$INPUT_VCF" | \
     bcftools annotate -x INFO/AA_info | \
+    bcftools view -a -Ou | \
     bcftools +fill-tags -Oz -o "$ALL_SITES_VCF" -- -t AC,AN,AF
     
     bcftools index -f "$ALL_SITES_VCF"
