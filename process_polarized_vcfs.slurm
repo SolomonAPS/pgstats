@@ -56,18 +56,27 @@ for CHR in 2L 2R 3L 3R; do
         continue
     fi
     
-    # Step 1: Remove outgroup samples and clean INFO fields
-    echo "  Step 1: Removing outgroups and cleaning INFO..."
-    bcftools view -s ^droSim1,droYak2 "$INPUT_VCF" | \
+    # Step 1: Filter for mono+biallelic FIRST (before removing outgroups)
+    echo "  Step 1: Filtering for mono+biallelic sites (with outgroups)..."
+    TEMP_FILTERED="${OUTPUT_DIR}/temp_${CHR}_filtered.vcf.gz"
+    bcftools view -m2 -M2 -Oz -o "$TEMP_FILTERED" "$INPUT_VCF"
+    bcftools index -f "$TEMP_FILTERED"
+    
+    # Step 2: Remove outgroup samples and clean INFO fields
+    echo "  Step 2: Removing outgroups and cleaning INFO..."
+    bcftools view -s ^droSim1,droYak2 "$TEMP_FILTERED" | \
     bcftools annotate -x INFO/AA_info | \
     bcftools +fill-tags -Oz -o "$ALL_SITES_VCF" -- -t AC,AN,AF
     
     bcftools index -f "$ALL_SITES_VCF"
     
-    # Step 2: Create mono+biallelic only version
-    echo "  Step 2: Creating mono+biallelic VCF..."
+    # Step 3: Create mono+biallelic only version (may have become multiallelic after removing outgroups)
+    echo "  Step 3: Re-filtering for mono+biallelic (after outgroup removal)..."
     bcftools view -m2 -M2 -Oz -o "$MONO_BI_VCF" "$ALL_SITES_VCF"
     bcftools index -f "$MONO_BI_VCF"
+    
+    # Clean up temp file
+    rm "$TEMP_FILTERED" "${TEMP_FILTERED}.csi"
     
     # Check site counts
     ALL_SITES=$(bcftools view -H "$ALL_SITES_VCF" | wc -l)
