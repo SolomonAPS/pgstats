@@ -56,11 +56,11 @@ for CHR in 2L 2R 3L 3R; do
         continue
     fi
     
-    # Step 1: Remove outgroup samples, clean INFO, prune unused ALT alleles, and recalculate AC/AN
-    echo "  Step 1: Removing outgroups, cleaning INFO, and pruning unused ALT alleles..."
-    bcftools view -s ^droSim1,droYak2 "$INPUT_VCF" | \
+    # Step 1: Remove outgroup samples, clean INFO, trim unused ALT alleles, and recalculate AC/AN
+    # The -a flag in bcftools view trims ALT alleles with zero observations in the subset
+    echo "  Step 1: Removing outgroups, cleaning INFO, and trimming unused ALT alleles..."
+    bcftools view -s ^droSim1,droYak2 -a "$INPUT_VCF" -Ou | \
     bcftools annotate -x INFO/AA_info -Ou | \
-    bcftools +prune -Ou -e 'AC==0' | \
     bcftools +fill-tags -Oz -o "$ALL_SITES_VCF" -- -t AC,AN,AF
     
     bcftools index -f "$ALL_SITES_VCF"
