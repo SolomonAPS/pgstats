@@ -132,14 +132,15 @@ for CHR in 2L 2R 3L 3R; do
     
     echo "Processing $CHROM_NAME for BED..."
     
-    # Extract all positions (callable sites)
+    # Extract all positions (callable sites) and merge consecutive positions
     bcftools view -H "$ALL_SITES_VCF" | \
     awk -v OFS="\t" '{
         pos = $2  # 1-based VCF position
         bed_start = pos - 1  # 0-based
         bed_end = pos        # half-open
         print $1, bed_start, bed_end
-    }' | sort -k1,1 -k2,2n > "${TEMP_DIR}/${CHR}_callable.bed"
+    }' | sort -k1,1 -k2,2n | \
+    bedtools merge -i - > "${TEMP_DIR}/${CHR}_callable.bed"
     
     # Create whole chromosome BED
     echo -e "${CHROM_NAME}\t0\t${CHROM_LENGTH}" > "${TEMP_DIR}/${CHR}_whole.bed"
@@ -147,12 +148,12 @@ for CHR in 2L 2R 3L 3R; do
     # Subtract callable from whole to get non-callable
     bedtools subtract -a "${TEMP_DIR}/${CHR}_whole.bed" -b "${TEMP_DIR}/${CHR}_callable.bed" > "$TEMP_BED"
     
-    CALLABLE_SITES=$(wc -l < "${TEMP_DIR}/${CHR}_callable.bed")
+    CALLABLE_REGIONS=$(wc -l < "${TEMP_DIR}/${CHR}_callable.bed")
+    CALLABLE_BP=$(awk '{sum += $3-$2} END {print sum+0}' "${TEMP_DIR}/${CHR}_callable.bed")
     NONCALLABLE_REGIONS=$(wc -l < "$TEMP_BED")
     NONCALLABLE_BP=$(awk '{sum += $3-$2} END {print sum+0}' "$TEMP_BED")
-    CALLABLE_BP=$((CHROM_LENGTH - NONCALLABLE_BP))
     
-    echo "  Callable sites: $CALLABLE_SITES"
+    echo "  Callable regions (after merging): $CALLABLE_REGIONS"
     echo "  Callable bp: $CALLABLE_BP ($(awk "BEGIN {printf \"%.2f\", ($CALLABLE_BP/$CHROM_LENGTH)*100}")%)"
     echo "  Non-callable regions: $NONCALLABLE_REGIONS"
     echo "  Non-callable bp: $NONCALLABLE_BP"
