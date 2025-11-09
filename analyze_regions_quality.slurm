@@ -111,8 +111,12 @@ while IFS=$'\t' read -r CHROM START END; do
     CALLABLE_BP=$SITES_IN_VCF
     
     # Calculate non-callable bp in this region
-    NONCALLABLE_BP=$(bedtools intersect -a <(echo -e "${CHROM}\t${START}\t${END}") -b "$NONCALLABLE_BED" | \
+    # Use temp file instead of process substitution for bedtools compatibility
+    TEMP_REGION=$(mktemp)
+    echo -e "${CHROM}\t${START}\t${END}" > "$TEMP_REGION"
+    NONCALLABLE_BP=$(bedtools intersect -a "$TEMP_REGION" -b "$NONCALLABLE_BED" | \
     awk '{sum += $3-$2} END {print sum+0}')
+    rm -f "$TEMP_REGION"
     
     # Calculate percentages
     CALLABLE_PCT=$(awk "BEGIN {printf \"%.2f\", ($CALLABLE_BP/$TOTAL_REGION_BP)*100}")
