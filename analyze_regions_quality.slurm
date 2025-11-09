@@ -87,8 +87,8 @@ while IFS=$'\t' read -r CHROM START END; do
     
     # Extract sites in this region from VCF
     # Count sites and get AA_prob distribution
-    AA_STATS=$(bcftools view -H -r "${CHROM}:${START}-${END}" "$VCF_FILE" | \
-    bcftools query -f '%AA_prob\n' | \
+    # Use single bcftools command instead of piping to avoid stdin issues
+    AA_STATS=$(bcftools query -r "${CHROM}:${START}-${END}" -f '%AA_prob\n' "$VCF_FILE" | \
     awk '
     {
         total++
