@@ -44,7 +44,7 @@ for CHR in 2L 2R 3L 3R; do
     
     # Output files
     ALL_SITES_VCF="${OUTPUT_DIR}/dpgp3_${CHR}_polarized_clean.vcf.gz"
-    MONO_BI_VCF="${OUTPUT_DIR}/dpgp3_${CHR}_polarized_mono_bi.vcf.gz"
+    BIALLELIC_VCF="${OUTPUT_DIR}/dpgp3_${CHR}_polarized_biallelic.vcf.gz"
     
     echo "=========================================="
     echo "Processing chromosome ${CHR}"
@@ -65,19 +65,21 @@ for CHR in 2L 2R 3L 3R; do
     
     bcftools index -f "$ALL_SITES_VCF"
     
-    # Step 2: Create mono+biallelic only version
-    echo "  Step 2: Creating mono+biallelic VCF..."
-    bcftools view -m2 -M2 -Oz -o "$MONO_BI_VCF" "$ALL_SITES_VCF"
-    bcftools index -f "$MONO_BI_VCF"
+    # Step 2: Create biallelic-only version (for statistics)
+    echo "  Step 2: Creating biallelic-only VCF..."
+    bcftools view -m2 -M2 -v snps,indels -Oz -o "$BIALLELIC_VCF" "$ALL_SITES_VCF"
+    bcftools index -f "$BIALLELIC_VCF"
     
     # Check site counts
     ALL_SITES=$(bcftools view -H "$ALL_SITES_VCF" | wc -l)
-    MONO_BI_SITES=$(bcftools view -H "$MONO_BI_VCF" | wc -l)
-    MULTIALLELIC=$((ALL_SITES - MONO_BI_SITES))
+    BIALLELIC_SITES=$(bcftools view -H "$BIALLELIC_VCF" | wc -l)
+    MONOMORPHIC=$(bcftools view -H -v ref "$ALL_SITES_VCF" | wc -l)
+    MULTIALLELIC=$(bcftools view -H -m3 "$ALL_SITES_VCF" | wc -l)
     
-    echo "  Total sites: $ALL_SITES"
-    echo "  Mono+biallelic sites: $MONO_BI_SITES"
-    echo "  Multiallelic sites (excluded): $MULTIALLELIC"
+    echo "  Total sites (all): $ALL_SITES"
+    echo "  Monomorphic sites: $MONOMORPHIC"
+    echo "  Biallelic sites: $BIALLELIC_SITES"
+    echo "  Multiallelic sites: $MULTIALLELIC"
     
     # Check AA_prob distribution
     echo "  Checking AA_prob distribution..."
@@ -173,7 +175,7 @@ echo "Total non-callable bases: $TOTAL_NONCALLABLE_BP"
 echo ""
 echo "Output files created:"
 echo "  Clean VCFs (all sites): ${OUTPUT_DIR}/dpgp3_*_polarized_clean.vcf.gz"
-echo "  Mono+biallelic VCFs: ${OUTPUT_DIR}/dpgp3_*_polarized_mono_bi.vcf.gz"
+echo "  Biallelic VCFs (for stats): ${OUTPUT_DIR}/dpgp3_*_polarized_biallelic.vcf.gz"
 echo "  Non-callable BED: $BED_OUTPUT"
 echo ""
 echo "First 10 non-callable regions:"
