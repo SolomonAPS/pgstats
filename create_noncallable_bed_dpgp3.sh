@@ -80,20 +80,22 @@ for CHR in 2L 2R 3L 3R; do
         continue
     fi
     
-    echo "Extracting callable positions..."
-    
     # Extract all positions from VCF (these are callable)
-    # Convert to 0-based BED format for each position
+    # Convert to 0-based BED format for each position, then merge consecutive positions
+    echo "  Extracting and merging callable positions..."
     bcftools view -H "$VCF_FILE" | \
     awk -v OFS="\t" '{
         pos = $2  # 1-based VCF position
         bed_start = pos - 1  # 0-based
         bed_end = pos        # half-open
         print $1, bed_start, bed_end
-    }' | sort -k1,1 -k2,2n > "${TEMP_DIR}/${CHR}_callable.bed"
+    }' | sort -k1,1 -k2,2n | \
+    bedtools merge -i - > "${TEMP_DIR}/${CHR}_callable.bed"
     
-    CALLABLE_SITES=$(wc -l < "${TEMP_DIR}/${CHR}_callable.bed")
-    echo "  Callable sites in VCF: $CALLABLE_SITES"
+    CALLABLE_REGIONS=$(wc -l < "${TEMP_DIR}/${CHR}_callable.bed")
+    CALLABLE_BP=$(awk '{sum += $3-$2} END {print sum+0}' "${TEMP_DIR}/${CHR}_callable.bed")
+    echo "  Callable regions (after merging): $CALLABLE_REGIONS"
+    echo "  Callable bases: $CALLABLE_BP"
     
     # Create a BED file for the entire chromosome
     echo -e "${CHROM_NAME}\t0\t${CHROM_LENGTH}" > "${TEMP_DIR}/${CHR}_whole.bed"
@@ -105,11 +107,9 @@ for CHR in 2L 2R 3L 3R; do
     # Count non-callable regions
     NONCALLABLE_REGIONS=$(wc -l < "$TEMP_BED")
     NONCALLABLE_BP=$(awk '{sum += $3-$2} END {print sum+0}' "$TEMP_BED")
-    CALLABLE_BP=$((CHROM_LENGTH - NONCALLABLE_BP))
     
-    echo "  Callable bases: $CALLABLE_BP"
     echo "  Non-callable regions: $NONCALLABLE_REGIONS"
-    echo "  Non-callable bases: $NONCALLABLE_BP"
+    echo "  Non-callable bases: $NONCALLABLE_BP ($(awk "BEGIN {printf \"%.2f\", ($NONCALLABLE_BP/$CHROM_LENGTH)*100}")%)"
     echo ""
 done
 
