@@ -156,8 +156,9 @@ def load_vcf(vcf_path: Union[str, List[str]],
     if _is_zarr_up_to_date(zarr_path, vcf_paths):
         print(f"Reusing existing Zarr file: {zarr_path}", flush=True)
         print(f"Loading Zarr dataset...", flush=True)
-        # Use auto-chunking for memory efficiency
-        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        # Load without chunking to avoid dask corruption
+        print(f"DEBUG: Loading without dask chunking to prevent corruption...", flush=True)
+        dataset = sg.load_dataset(str(zarr_path), chunks=None, **kwargs)
         
         # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
         if 'variant_contig' in dataset.data_vars:
@@ -230,16 +231,32 @@ def load_vcf(vcf_path: Union[str, List[str]],
         except Exception as e:
             print(f"DEBUG: Error reading raw Zarr: {e}", flush=True)
         
-        # Load Zarr dataset with sgkit (try without dask chunking first for reliability)
+        # Load Zarr dataset with sgkit
+        # CRITICAL: Load without chunking to avoid dask corruption issues
+        # For small-medium datasets, loading into memory is more reliable than lazy dask evaluation
         print(f"Loading Zarr dataset...", flush=True)
-        # Use auto-chunking for memory efficiency
-        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        print(f"DEBUG: Loading without dask chunking to prevent corruption...", flush=True)
+        dataset = sg.load_dataset(str(zarr_path), chunks=None, **kwargs)
         
         # DEBUG: Check positions immediately after loading
         positions = dataset.variant_position.values
         print(f"DEBUG: Loaded positions - min: {positions.min()}, max: {positions.max()}, dtype: {positions.dtype}", flush=True)
         print(f"DEBUG: First 10 positions: {positions[:10]}", flush=True)
         print(f"DEBUG: Last 10 positions: {positions[-10:]}", flush=True)
+        
+        # CRITICAL FIX: Force dask arrays to be computed and cached immediately
+        # This prevents corruption that occurs during lazy evaluation
+        print(f"DEBUG: Computing and caching all arrays to prevent dask corruption...", flush=True)
+        if hasattr(dataset.variant_position, 'compute'):
+            print(f"DEBUG: variant_position is a dask array, computing...", flush=True)
+            dataset = dataset.assign(variant_position=dataset.variant_position.compute())
+        if hasattr(dataset.variant_contig, 'compute'):
+            print(f"DEBUG: variant_contig is a dask array, computing...", flush=True)
+            dataset = dataset.assign(variant_contig=dataset.variant_contig.compute())
+        if hasattr(dataset.call_genotype, 'compute'):
+            print(f"DEBUG: call_genotype is a dask array, computing...", flush=True)
+            dataset = dataset.assign(call_genotype=dataset.call_genotype.compute())
+        print(f"DEBUG: All critical arrays computed and cached", flush=True)
         
         # BUGFIX: Check for bio2zarr memory-related corruption
         # If bio2zarr runs out of memory during encode phase, variant_contig can contain invalid values
