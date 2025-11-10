@@ -108,35 +108,8 @@ def load_vcf(vcf_path: Union[str, List[str]],
         if not Path(path).exists():
             raise FileNotFoundError(f"VCF file not found: {path}")
     
-    # For single small VCFs, use fast in-memory loading via sgkit
-    if len(vcf_paths) == 1:
-        try:
-            # Quick check: count variants in VCF
-            import subprocess
-            result = subprocess.run(
-                ['bcftools', 'view', '-H', vcf_paths[0]],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                num_variants = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
-                
-                if num_variants <= max_variants_in_memory:
-                    print(f"Loading VCF in-memory ({num_variants} variants, fast mode)", flush=True)
-                    # Use sgkit's vcf_to_zarr which handles small files efficiently
-                    zarr_path = Path(tempfile.mkdtemp()) / "temp.vcz"
-                    sg.vcf_to_zarr(vcf_paths[0], str(zarr_path), max_alt_alleles=10)
-                    dataset = sg.load_dataset(str(zarr_path))
-                    # Clean up temp zarr
-                    import shutil
-                    shutil.rmtree(zarr_path.parent)
-                    print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
-                    return dataset
-                else:
-                    print(f"VCF has {num_variants} variants (>{max_variants_in_memory}), using bio2zarr workflow", flush=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # bcftools not available or failed, fall back to bio2zarr
-            pass
+    # NOTE: sgkit.vcf_to_zarr was deprecated - bio2zarr is now the only option
+    # We use bio2zarr's two-step workflow which is more memory-efficient than the old single-pass
     
     # Set up temporary directory
     if temp_dir is None:
