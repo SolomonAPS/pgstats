@@ -158,11 +158,11 @@ def load_vcf(vcf_path: Union[str, List[str]],
         icf_path = zarr_path.parent / f"{zarr_path.stem}.icf"
         print(f"Step 1/2: Exploding VCF to ICF format...", flush=True)
         
-        # bio2zarr.vcf.explode expects: explode(vcfs, icf_path, **kwargs)
-        # where vcfs is a list of VCF path strings
+        # bio2zarr.vcf.explode signature: explode(icf_path, vcfs, **kwargs)
+        # Note: icf_path is FIRST, vcfs is SECOND
         v2z.explode(
-            vcf_paths,
             str(icf_path),
+            vcf_paths,
             worker_processes=worker_processes,
             show_progress=show_progress
         )
