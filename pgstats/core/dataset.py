@@ -656,6 +656,16 @@ class GenomicDataset:
                     raise ValueError(f"Failed to create windows for region {start}-{end}: {e}")
             else:
                 print(f"Creating position-based windows with size {window_size}", flush=True)
+                
+                # DEBUG: Print dataset information before windowing
+                positions = self.dataset.variant_position.values
+                print(f"DEBUG: Dataset has {len(positions)} variants", flush=True)
+                if len(positions) > 0:
+                    print(f"DEBUG: Position range: {positions[0]} - {positions[-1]}", flush=True)
+                    print(f"DEBUG: Span: {positions[-1] - positions[0] + 1} bp", flush=True)
+                    print(f"DEBUG: Window size: {window_size}, Step: {step_size}", flush=True)
+                    print(f"DEBUG: Expected windows: ~{(positions[-1] - positions[0]) // step_size + 1}", flush=True)
+                
                 try:
                     # Use window_by_position for base pair windows
                     # Could also use window_by_variant for variant count windows
@@ -664,6 +674,15 @@ class GenomicDataset:
                         size=window_size,
                         step=step_size
                     )
+                    
+                    # DEBUG: Print windowing results
+                    if self.windowed_dataset is not None:
+                        n_wins = len(self.windowed_dataset.windows)
+                        print(f"DEBUG: sg.window_by_position created {n_wins} windows", flush=True)
+                        if n_wins > 0:
+                            print(f"DEBUG: window_start values: {self.windowed_dataset.window_start.values[:min(5, n_wins)]}", flush=True)
+                            print(f"DEBUG: window_stop values: {self.windowed_dataset.window_stop.values[:min(5, n_wins)]}", flush=True)
+                    
                 except Exception as e:
                     raise ValueError(f"Failed to create position-based windows: {e}")
         
@@ -690,6 +709,12 @@ class GenomicDataset:
         
         # Get actual positions for each window
         positions = self.dataset.variant_position.values
+        
+        # DEBUG: Print raw window indices from sgkit
+        print(f"DEBUG: Raw window_starts (indices): {window_starts[:min(5, len(window_starts))]}", flush=True)
+        print(f"DEBUG: Raw window_stops (indices): {window_stops[:min(5, len(window_stops))]}", flush=True)
+        print(f"DEBUG: Total variants in dataset: {len(positions)}", flush=True)
+        
         window_start_positions = positions[window_starts]
         
         # Handle empty windows: when window_stops == window_starts, the window is empty
@@ -699,6 +724,11 @@ class GenomicDataset:
             positions[window_stops - 1],  # Non-empty window: last variant in window
             positions[window_starts]       # Empty window: use start position
         )
+        
+        # DEBUG: Print calculated positions
+        print(f"DEBUG: Calculated window_start_positions: {window_start_positions[:min(5, len(window_start_positions))]}", flush=True)
+        print(f"DEBUG: Calculated window_stop_positions: {window_stop_positions[:min(5, len(window_stop_positions))]}", flush=True)
+        print(f"DEBUG: Variants per window: {(window_stops - window_starts)[:min(5, len(window_starts))]}", flush=True)
         
         # Set up proper window coordinates
         self.windowed_dataset = self.windowed_dataset.assign_coords({
