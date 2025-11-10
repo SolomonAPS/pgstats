@@ -158,9 +158,9 @@ def load_vcf(vcf_path: Union[str, List[str]],
         icf_path = zarr_path.parent / f"{zarr_path.stem}.icf"
         print(f"Step 1/2: Exploding VCF to ICF format...", flush=True)
         
-        # bio2zarr.vcf2zarr.explode expects: explode(vcfs, icf_path, **kwargs)
-        # where vcfs is a list of paths
-        v2z.vcf2zarr.explode(
+        # bio2zarr.vcf.explode expects: explode(vcfs, icf_path, **kwargs)
+        # where vcfs is a list of VCF path strings
+        v2z.explode(
             vcf_paths,
             str(icf_path),
             worker_processes=worker_processes,
@@ -170,8 +170,8 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Step 2: Encode ICF to final Zarr format
         print(f"Step 2/2: Encoding ICF to Zarr...", flush=True)
         
-        # bio2zarr.vcf2zarr.encode expects: encode(icf_path, zarr_path, **kwargs)
-        v2z.vcf2zarr.encode(
+        # bio2zarr.vcf.encode expects: encode(icf_path, zarr_path, **kwargs)
+        v2z.encode(
             str(icf_path),
             str(zarr_path),
             variants_chunk_size=variants_chunk_size,
