@@ -759,7 +759,7 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype", use_fixed_n: 
             pi_values[w_idx] = calculate_pi_fixed_n(window_variant_matrix, window_max_n)
         else:
             # Calculate θπ with per-site sample sizes (default)
-        pi_values[w_idx] = calculate_pi(window_variant_matrix)
+            pi_values[w_idx] = calculate_pi(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
