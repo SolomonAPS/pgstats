@@ -691,7 +691,13 @@ class GenomicDataset:
         # Get actual positions for each window
         positions = self.dataset.variant_position.values
         window_start_positions = positions[window_starts]
-        window_stop_positions = positions[window_stops - 1]  # -1 because stop is exclusive
+        
+        # Handle empty windows: when window_stops is 0, use window_starts instead of wrapping to -1
+        window_stop_positions = np.where(
+            window_stops > 0,
+            positions[window_stops - 1],  # Normal case: last variant in window
+            positions[window_starts]       # Empty window: use start position
+        )
         
         # Set up proper window coordinates
         self.windowed_dataset = self.windowed_dataset.assign_coords({
