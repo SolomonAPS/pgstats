@@ -493,7 +493,7 @@ def calculate_pi_fixed_n(variant_matrix: np.ndarray, n_max: int) -> float:
         
         # Calculate pi for this site using fixed n
         pi_site = (derived_count * (n_max - derived_count)) / n_pairs
-            total_pi += pi_site
+        total_pi += pi_site
     
     return total_pi
 
@@ -759,7 +759,7 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype", use_fixed_n: 
             pi_values[w_idx] = calculate_pi_fixed_n(window_variant_matrix, window_max_n)
         else:
             # Calculate θπ with per-site sample sizes (default)
-        pi_values[w_idx] = calculate_pi(window_variant_matrix)
+            pi_values[w_idx] = calculate_pi(window_variant_matrix)
     
     # Create output dataset
     result = ds.copy()
