@@ -169,15 +169,21 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Use auto-chunking for memory efficiency
         dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
         
-        # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
-        # bio2zarr encodes variant_contig as int8 by default, which overflows at 128 contigs
-        # or can get corrupted during dask operations with many BED regions
+        # BUGFIX: Check for bio2zarr memory-related corruption
+        # If bio2zarr runs out of memory, variant_contig can contain invalid values
         if 'variant_contig' in dataset.data_vars:
-            if dataset.variant_contig.dtype == np.int8:
-                print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
-                dataset = dataset.assign(
-                    variant_contig=dataset.variant_contig.astype(np.int16)
-                )
+            variant_contig_values = dataset.variant_contig.values
+            if hasattr(variant_contig_values, 'compute'):
+                variant_contig_values = variant_contig_values.compute()
+            
+            num_contigs = len(dataset.contig_id.values)
+            if np.any(variant_contig_values < 0) or np.any(variant_contig_values >= num_contigs):
+                print(f"ERROR: Detected corrupted variant_contig values!", flush=True)
+                print(f"  This usually indicates bio2zarr ran out of memory.", flush=True)
+                print(f"  Found {np.sum(variant_contig_values < 0)} negative values", flush=True)
+                print(f"  Found {np.sum(variant_contig_values >= num_contigs)} values >= {num_contigs} (max should be {num_contigs-1})", flush=True)
+                print(f"  Please increase memory allocation and re-run.", flush=True)
+                raise ValueError("Corrupted variant_contig detected - likely due to insufficient memory during VCF->Zarr conversion")
         
         # Validate dataset loaded correctly (without triggering computation)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)

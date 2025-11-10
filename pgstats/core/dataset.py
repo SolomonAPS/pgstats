@@ -123,21 +123,6 @@ class GenomicDataset:
                 # Load Zarr dataset
                 import sgkit as sg
                 self.dataset = sg.load_dataset(data_source)
-                
-                # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
-                if 'variant_contig' in self.dataset.data_vars:
-                    print(f"DEBUG: variant_contig dtype before conversion: {self.dataset.variant_contig.dtype}", flush=True)
-                    if self.dataset.variant_contig.dtype == np.int8:
-                        print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
-                        # Force computation by converting to numpy array and back
-                        variant_contig_values = self.dataset.variant_contig.values
-                        if hasattr(variant_contig_values, 'compute'):
-                            variant_contig_values = variant_contig_values.compute()
-                        variant_contig_int16 = variant_contig_values.astype(np.int16)
-                        self.dataset = self.dataset.assign(
-                            variant_contig=(['variants'], variant_contig_int16)
-                        )
-                        print(f"DEBUG: variant_contig dtype after conversion: {self.dataset.variant_contig.dtype}", flush=True)
             else:
                 # Load VCF
                 self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr, temp_dir=zarr_dir, output_dir=output_dir)
@@ -368,26 +353,13 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
-        # Force computation of dask arrays and check for int8 overflow
-        # This must happen before any indexing operations
-        print(f"DEBUG: About to compute arrays...", flush=True)
+        # Force computation of dask arrays
         if hasattr(positions, 'compute'):
-            print(f"DEBUG: Computing positions...", flush=True)
             positions = positions.compute()
         if hasattr(contigs, 'compute'):
-            print(f"DEBUG: Computing contigs (dtype={contigs.dtype})...", flush=True)
             contigs = contigs.compute()
-            print(f"DEBUG: Contigs computed successfully", flush=True)
         if hasattr(contig_names, 'compute'):
-            print(f"DEBUG: Computing contig_names...", flush=True)
             contig_names = contig_names.compute()
-        
-        # DIAGNOSTIC: Check for int8 overflow before any operations
-        print(f"DEBUG: Checking contig values...", flush=True)
-        print(f"DEBUG: contigs dtype={contigs.dtype}, shape={contigs.shape}", flush=True)
-        print(f"DEBUG: contigs min={contigs.min()}, max={contigs.max()}", flush=True)
-        print(f"DEBUG: contigs unique values={np.unique(contigs)}", flush=True)
-        print(f"DEBUG: contig_names={contig_names}", flush=True)
         
         # Get actual chromosome names by indexing
         unique_contigs = np.unique(contigs)
@@ -425,14 +397,6 @@ class GenomicDataset:
         # Create DataFrame with variant positions and original indices
         # This is necessary because PyRanges resets indices in overlap results
         # VCF positions are 1-based, need to convert to 0-based for PyRanges
-        
-        # BUGFIX: Handle potential int8 overflow in variant_contig
-        # When variant_contig is stored as int8, negative values indicate overflow
-        # For single-contig VCFs, all valid values should be 0
-        if np.any(contigs < 0):
-            print(f"Warning: Detected invalid contig indices (int8 overflow). Fixing...", flush=True)
-            contigs = np.where(contigs < 0, 0, contigs)
-        
         variants_df = pd.DataFrame({
             'Chromosome': contig_names[contigs].astype(str),
             'Start': positions - 1,   # Convert VCF 1-based to PyRanges 0-based
