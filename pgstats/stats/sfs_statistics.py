@@ -493,7 +493,7 @@ def calculate_pi_fixed_n(variant_matrix: np.ndarray, n_max: int) -> float:
         
         # Calculate pi for this site using fixed n
         pi_site = (derived_count * (n_max - derived_count)) / n_pairs
-            total_pi += pi_site
+        total_pi += pi_site
     
     return total_pi
 
