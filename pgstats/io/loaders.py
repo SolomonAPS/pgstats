@@ -150,15 +150,36 @@ def load_vcf(vcf_path: Union[str, List[str]],
     
     try:
         # Convert VCF to Zarr using bio2zarr Python API
+        # Use two-step workflow (explode → encode) for better memory efficiency
+        # This is the "medium dataset" workflow recommended by bio2zarr docs
         print(f"Converting VCF to Zarr: {zarr_path}", flush=True)
-        v2z.convert(
+        
+        # Step 1: Explode VCF to intermediate columnar format (ICF)
+        icf_path = zarr_path.parent / f"{zarr_path.stem}.icf"
+        print(f"Step 1/2: Exploding VCF to ICF format...", flush=True)
+        v2z.explode(
             vcf_paths,
+            str(icf_path),
+            worker_processes=worker_processes,
+            show_progress=show_progress
+        )
+        
+        # Step 2: Encode ICF to final Zarr format
+        print(f"Step 2/2: Encoding ICF to Zarr...", flush=True)
+        v2z.encode(
+            str(icf_path),
             str(zarr_path),
             variants_chunk_size=variants_chunk_size,
             samples_chunk_size=samples_chunk_size,
             worker_processes=worker_processes,
             show_progress=show_progress
         )
+        
+        # Clean up intermediate ICF directory
+        import shutil
+        if icf_path.exists():
+            shutil.rmtree(icf_path)
+        
         print(f"VCF conversion complete", flush=True)
         
         # Save metadata for future cache validation
