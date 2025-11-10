@@ -227,7 +227,7 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         type=float,
         default=0.0,
         metavar='FLOAT',
-        help='Maximum proportion of missing data per variant (default: 0.0)'
+        help='Maximum proportion of missing data per variant (default: 0.0 = no filtering; e.g., 0.2 = remove variants with >20%% missing)'
     )
     filter_group.add_argument(
         '--fixed-sample-size',

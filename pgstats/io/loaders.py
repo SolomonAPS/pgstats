@@ -135,6 +135,15 @@ def load_vcf(vcf_path: Union[str, List[str]],
         print(f"Loading Zarr dataset...", flush=True)
         # Use auto-chunking for memory efficiency
         dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        
+        # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
+        if 'variant_contig' in dataset.data_vars:
+            if dataset.variant_contig.dtype == np.int8:
+                print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
+                dataset = dataset.assign(
+                    variant_contig=dataset.variant_contig.astype(np.int16)
+                )
+        
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         return dataset
     
@@ -158,6 +167,16 @@ def load_vcf(vcf_path: Union[str, List[str]],
         print(f"Loading Zarr dataset...", flush=True)
         # Use auto-chunking for memory efficiency
         dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        
+        # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
+        # bio2zarr encodes variant_contig as int8 by default, which overflows at 128 contigs
+        # or can get corrupted during dask operations with many BED regions
+        if 'variant_contig' in dataset.data_vars:
+            if dataset.variant_contig.dtype == np.int8:
+                print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
+                dataset = dataset.assign(
+                    variant_contig=dataset.variant_contig.astype(np.int16)
+                )
         
         # Validate dataset loaded correctly (without triggering computation)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
@@ -205,7 +224,17 @@ def load_zarr(zarr_path: str, **kwargs) -> xr.Dataset:
     Returns:
         sgkit Dataset
     """
-    return sg.load_dataset(zarr_path, **kwargs)
+    dataset = sg.load_dataset(zarr_path, **kwargs)
+    
+    # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
+    if 'variant_contig' in dataset.data_vars:
+        if dataset.variant_contig.dtype == np.int8:
+            print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
+            dataset = dataset.assign(
+                variant_contig=dataset.variant_contig.astype(np.int16)
+            )
+    
+    return dataset
 
 
 def check_bio2zarr_available() -> bool:

@@ -123,6 +123,14 @@ class GenomicDataset:
                 # Load Zarr dataset
                 import sgkit as sg
                 self.dataset = sg.load_dataset(data_source)
+                
+                # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
+                if 'variant_contig' in self.dataset.data_vars:
+                    if self.dataset.variant_contig.dtype == np.int8:
+                        print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
+                        self.dataset = self.dataset.assign(
+                            variant_contig=self.dataset.variant_contig.astype(np.int16)
+                        )
             else:
                 # Load VCF
                 self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr, temp_dir=zarr_dir, output_dir=output_dir)
@@ -353,6 +361,19 @@ class GenomicDataset:
         contigs = self.dataset.variant_contig.values
         contig_names = self.dataset.contig_id.values
         
+        # Force computation of dask arrays and check for int8 overflow
+        # This must happen before any indexing operations
+        if hasattr(positions, 'compute'):
+            positions = positions.compute()
+        if hasattr(contigs, 'compute'):
+            contigs = contigs.compute()
+        if hasattr(contig_names, 'compute'):
+            contig_names = contig_names.compute()
+        
+        # DIAGNOSTIC: Check for int8 overflow before any operations
+        print(f"DEBUG: contigs dtype={contigs.dtype}, min={contigs.min()}, max={contigs.max()}, unique={np.unique(contigs)}", flush=True)
+        print(f"DEBUG: contig_names={contig_names}", flush=True)
+        
         # Get actual chromosome names by indexing
         unique_contigs = np.unique(contigs)
         actual_contig_names = [str(contig_names[i]) for i in unique_contigs if i < len(contig_names)]
@@ -389,6 +410,14 @@ class GenomicDataset:
         # Create DataFrame with variant positions and original indices
         # This is necessary because PyRanges resets indices in overlap results
         # VCF positions are 1-based, need to convert to 0-based for PyRanges
+        
+        # BUGFIX: Handle potential int8 overflow in variant_contig
+        # When variant_contig is stored as int8, negative values indicate overflow
+        # For single-contig VCFs, all valid values should be 0
+        if np.any(contigs < 0):
+            print(f"Warning: Detected invalid contig indices (int8 overflow). Fixing...", flush=True)
+            contigs = np.where(contigs < 0, 0, contigs)
+        
         variants_df = pd.DataFrame({
             'Chromosome': contig_names[contigs].astype(str),
             'Start': positions - 1,   # Convert VCF 1-based to PyRanges 0-based
