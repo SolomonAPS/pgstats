@@ -690,8 +690,27 @@ class GenomicDataset:
         
         # Get actual positions for each window
         positions = self.dataset.variant_position.values
-        window_start_positions = positions[window_starts]
-        window_stop_positions = positions[window_stops - 1]  # -1 because stop is exclusive
+        
+        # Handle windows with variants
+        window_start_positions = np.zeros(n_windows, dtype=positions.dtype)
+        window_stop_positions = np.zeros(n_windows, dtype=positions.dtype)
+        
+        for i in range(n_windows):
+            if window_stops[i] > window_starts[i]:
+                # Window has variants
+                window_start_positions[i] = positions[window_starts[i]]
+                window_stop_positions[i] = positions[window_stops[i] - 1]  # -1 because stop is exclusive
+            else:
+                # Window has no variants - use window boundaries from config
+                # This shouldn't happen after min_variants filtering, but handle it gracefully
+                if start is not None and end is not None:
+                    # For region-based analysis, estimate positions
+                    window_start_positions[i] = start + (i * (step_size or window_size or 1000))
+                    window_stop_positions[i] = min(window_start_positions[i] + (window_size or 1000), end)
+                else:
+                    # For genome-wide, set to 0 (will be filtered by min_variants anyway)
+                    window_start_positions[i] = 0
+                    window_stop_positions[i] = 0
         
         # Set up proper window coordinates
         self.windowed_dataset = self.windowed_dataset.assign_coords({
@@ -1224,6 +1243,16 @@ class GenomicDataset:
             callable_sites_per_window = self._calculate_callable_lengths_per_window(window_stats)
         
         callable_sites_per_window = np.array(callable_sites_per_window)
+        
+        # Filter out windows with zero callable sites BEFORE normalizing
+        # These windows cannot have valid theta estimates and should not be included in output
+        if use_callable_sites and np.any(callable_sites_per_window == 0):
+            n_zero_callable = np.sum(callable_sites_per_window == 0)
+            print(f"  Filtering {n_zero_callable} windows with 0 callable sites", flush=True)
+            
+            valid_callable_mask = callable_sites_per_window > 0
+            result = result.isel(windows=valid_callable_mask)
+            callable_sites_per_window = callable_sites_per_window[valid_callable_mask]
         
         # Normalize theta estimators by callable sites
         theta_stats = ['theta_pi', 'theta_w', 'theta_h', 'theta_l']
