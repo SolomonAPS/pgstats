@@ -103,6 +103,10 @@ def load_vcf(vcf_path: Union[str, List[str]],
     else:
         vcf_paths = vcf_path
     
+    # DEBUG: Print what we're actually getting
+    print(f"DEBUG load_vcf: vcf_path type={type(vcf_path)}, value={vcf_path}", flush=True)
+    print(f"DEBUG load_vcf: vcf_paths={vcf_paths}", flush=True)
+    
     # Validate VCF files exist
     for path in vcf_paths:
         if not Path(path).exists():
@@ -133,15 +137,20 @@ def load_vcf(vcf_path: Union[str, List[str]],
     if len(vcf_paths) == 1:
         # Handle .vcf.gz, .vcf, .bcf.gz, .bcf properly
         vcf_name = Path(vcf_paths[0]).name
+        print(f"DEBUG: Initial vcf_name from path: {vcf_name}", flush=True)
         # Remove .gz/.bgz first if present
         if vcf_name.endswith('.gz') or vcf_name.endswith('.bgz'):
             vcf_name = vcf_name.rsplit('.', 1)[0]
+            print(f"DEBUG: After removing .gz: {vcf_name}", flush=True)
         # Remove .vcf/.bcf extension
         if vcf_name.endswith('.vcf') or vcf_name.endswith('.bcf'):
             vcf_name = vcf_name.rsplit('.', 1)[0]
+            print(f"DEBUG: After removing .vcf: {vcf_name}", flush=True)
         zarr_path = temp_dir / f"{vcf_name}.vcz"
+        print(f"DEBUG: Final zarr_path: {zarr_path}", flush=True)
     else:
         zarr_path = temp_dir / "combined.vcz"
+        print(f"DEBUG: Multiple VCFs, zarr_path: {zarr_path}", flush=True)
     
     # Check if we can reuse existing Zarr file
     if _is_zarr_up_to_date(zarr_path, vcf_paths):
@@ -203,10 +212,34 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
         
+        # DEBUG: Check Zarr file directly before sgkit loads it
+        print(f"DEBUG: Checking raw Zarr file before sgkit loading...", flush=True)
+        import zarr
+        try:
+            z = zarr.open(str(zarr_path), mode='r')
+            if 'variant_position' in z:
+                raw_positions = z['variant_position'][:]
+                print(f"DEBUG: Raw Zarr positions - min: {raw_positions.min()}, max: {raw_positions.max()}, dtype: {raw_positions.dtype}", flush=True)
+                print(f"DEBUG: Raw Zarr first 10: {raw_positions[:10]}", flush=True)
+                print(f"DEBUG: Raw Zarr last 10: {raw_positions[-10:]}", flush=True)
+            else:
+                print(f"DEBUG: variant_position not found in Zarr root, checking variant_POS...", flush=True)
+                if 'variant_POS' in z:
+                    raw_positions = z['variant_POS'][:]
+                    print(f"DEBUG: Raw Zarr variant_POS - min: {raw_positions.min()}, max: {raw_positions.max()}", flush=True)
+        except Exception as e:
+            print(f"DEBUG: Error reading raw Zarr: {e}", flush=True)
+        
         # Load Zarr dataset with sgkit (try without dask chunking first for reliability)
         print(f"Loading Zarr dataset...", flush=True)
         # Use auto-chunking for memory efficiency
         dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        
+        # DEBUG: Check positions immediately after loading
+        positions = dataset.variant_position.values
+        print(f"DEBUG: Loaded positions - min: {positions.min()}, max: {positions.max()}, dtype: {positions.dtype}", flush=True)
+        print(f"DEBUG: First 10 positions: {positions[:10]}", flush=True)
+        print(f"DEBUG: Last 10 positions: {positions[-10:]}", flush=True)
         
         # BUGFIX: Check for bio2zarr memory-related corruption
         # If bio2zarr runs out of memory during encode phase, variant_contig can contain invalid values
