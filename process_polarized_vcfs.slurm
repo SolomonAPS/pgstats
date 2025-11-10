@@ -73,11 +73,11 @@ for CHR in 2L 2R 3L 3R; do
     # Check site counts
     ALL_SITES=$(bcftools view -H "$ALL_SITES_VCF" | wc -l)
     BIALLELIC_SITES=$(bcftools view -H "$BIALLELIC_VCF" | wc -l)
-    MONOMORPHIC=$(bcftools view -H -i 'AC==0 || AC==AN' "$ALL_SITES_VCF" | wc -l)
+    MONOMORPHIC=$(bcftools view -H -v ref "$ALL_SITES_VCF" | wc -l)
     MULTIALLELIC=$(bcftools view -H -m3 "$ALL_SITES_VCF" | wc -l)
     
     echo "  Total sites (all): $ALL_SITES"
-    echo "  Monomorphic sites (AC=0 or AC=AN): $MONOMORPHIC"
+    echo "  Monomorphic sites: $MONOMORPHIC"
     echo "  Biallelic sites: $BIALLELIC_SITES"
     echo "  Multiallelic sites: $MULTIALLELIC"
     
