@@ -185,6 +185,39 @@ def load_vcf(vcf_path: Union[str, List[str]],
                 print(f"  Please increase memory allocation and re-run.", flush=True)
                 raise ValueError("Corrupted variant_contig detected - likely due to insufficient memory during VCF->Zarr conversion")
         
+        # BUGFIX: Check for corrupted variant_position values
+        # Positions should be positive and in ascending order (or at least reasonable)
+        if 'variant_position' in dataset.data_vars:
+            variant_positions = dataset.variant_position.values
+            if hasattr(variant_positions, 'compute'):
+                # Only compute first and last few positions to check
+                first_positions = variant_positions[:min(10, len(variant_positions))].compute()
+                last_positions = variant_positions[-min(10, len(variant_positions)):].compute()
+                
+                # Check for obviously wrong values (negative, or > 1 billion which is larger than any chromosome)
+                if np.any(first_positions < 0) or np.any(last_positions < 0):
+                    print(f"ERROR: Detected negative variant positions!", flush=True)
+                    print(f"  First positions: {first_positions}", flush=True)
+                    print(f"  Last positions: {last_positions}", flush=True)
+                    raise ValueError("Corrupted variant_position detected - negative values found")
+                
+                if np.any(first_positions > 1_000_000_000) or np.any(last_positions > 1_000_000_000):
+                    print(f"ERROR: Detected impossibly large variant positions (>1 billion)!", flush=True)
+                    print(f"  First positions: {first_positions}", flush=True)
+                    print(f"  Last positions: {last_positions}", flush=True)
+                    print(f"  This usually indicates bio2zarr ran out of memory.", flush=True)
+                    print(f"  Please increase memory allocation and re-run.", flush=True)
+                    raise ValueError("Corrupted variant_position detected - likely due to insufficient memory during VCF->Zarr conversion")
+                
+                # Check if positions are in descending order (first > last), which is wrong
+                if first_positions[0] > last_positions[-1]:
+                    print(f"ERROR: Variant positions are in wrong order!", flush=True)
+                    print(f"  First position: {first_positions[0]}", flush=True)
+                    print(f"  Last position: {last_positions[-1]}", flush=True)
+                    print(f"  This usually indicates bio2zarr ran out of memory.", flush=True)
+                    print(f"  Please increase memory allocation and re-run.", flush=True)
+                    raise ValueError("Corrupted variant_position detected - positions in wrong order, likely due to insufficient memory during VCF->Zarr conversion")
+        
         # Validate dataset loaded correctly (without triggering computation)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         
