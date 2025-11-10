@@ -4,6 +4,7 @@ Data loading utilities for various genetic data formats.
 
 import os
 import tempfile
+import numpy as np
 import sgkit as sg
 import xarray as xr
 import bio2zarr.vcf as v2z
@@ -141,6 +142,15 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Load with or without dask chunking based on use_dask parameter
         chunks = 'auto' if use_dask else None
         dataset = sg.load_dataset(str(zarr_path), chunks=chunks, **kwargs)
+        
+        # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
+        if 'variant_contig' in dataset.data_vars:
+            if dataset.variant_contig.dtype == np.int8:
+                print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
+                dataset = dataset.assign(
+                    variant_contig=dataset.variant_contig.astype(np.int16)
+                )
+        
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         return dataset
     
@@ -187,6 +197,14 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Load with or without dask chunking based on use_dask parameter
         chunks = 'auto' if use_dask else None
         dataset = sg.load_dataset(str(zarr_path), chunks=chunks, **kwargs)
+        
+        # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
+        if 'variant_contig' in dataset.data_vars:
+            if dataset.variant_contig.dtype == np.int8:
+                print(f"Converting variant_contig from int8 to int16 to prevent overflow...", flush=True)
+                dataset = dataset.assign(
+                    variant_contig=dataset.variant_contig.astype(np.int16)
+                )
         
         # Validate dataset loaded correctly (without triggering computation)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
