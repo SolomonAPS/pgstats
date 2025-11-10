@@ -4,6 +4,7 @@ Data loading utilities for various genetic data formats.
 
 import os
 import tempfile
+import numpy as np
 import sgkit as sg
 import xarray as xr
 import bio2zarr.vcf as v2z
