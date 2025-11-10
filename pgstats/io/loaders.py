@@ -60,6 +60,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
              samples_chunk_size: Optional[int] = None,
              worker_processes: int = 0,
              show_progress: bool = True,
+             use_dask: bool = False,
              **kwargs) -> xr.Dataset:
     """
     Load VCF data using bio2zarr Python API.
@@ -75,6 +76,10 @@ def load_vcf(vcf_path: Union[str, List[str]],
         samples_chunk_size: Chunk size for samples dimension
         worker_processes: Number of worker processes for parallel conversion
         show_progress: Whether to show progress during conversion
+        use_dask: Whether to use dask chunking (default: False for reliability)
+                  Set to True for very large datasets (>100k variants) if you
+                  experience memory issues. Note: dask can cause corruption on
+                  small datasets due to lazy evaluation issues.
         **kwargs: Additional arguments passed to sgkit.load_dataset
         
     Returns:
@@ -133,31 +138,55 @@ def load_vcf(vcf_path: Union[str, List[str]],
     if _is_zarr_up_to_date(zarr_path, vcf_paths):
         print(f"Reusing existing Zarr file: {zarr_path}", flush=True)
         print(f"Loading Zarr dataset...", flush=True)
-        # Use auto-chunking for memory efficiency
-        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        # Load with or without dask chunking based on use_dask parameter
+        chunks = 'auto' if use_dask else None
+        dataset = sg.load_dataset(str(zarr_path), chunks=chunks, **kwargs)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
         return dataset
     
     try:
-        # Convert VCF to Zarr using bio2zarr Python API
+        # Convert VCF to Zarr using bio2zarr two-step workflow
+        # This is more memory-efficient than the deprecated single-step convert()
         print(f"Converting VCF to Zarr: {zarr_path}", flush=True)
-        v2z.convert(
+        
+        # Step 1: Explode VCF to intermediate columnar format (ICF)
+        icf_path = zarr_path.parent / f"{zarr_path.stem}.icf"
+        print(f"Step 1/2: Exploding VCF to ICF format...", flush=True)
+        
+        v2z.explode(
+            str(icf_path),
             vcf_paths,
+            worker_processes=worker_processes,
+            show_progress=show_progress
+        )
+        
+        # Step 2: Encode ICF to final Zarr format
+        print(f"Step 2/2: Encoding ICF to Zarr...", flush=True)
+        
+        v2z.encode(
+            str(icf_path),
             str(zarr_path),
             variants_chunk_size=variants_chunk_size,
             samples_chunk_size=samples_chunk_size,
             worker_processes=worker_processes,
             show_progress=show_progress
         )
+        
+        # Clean up intermediate ICF directory
+        import shutil
+        if icf_path.exists():
+            shutil.rmtree(icf_path)
+        
         print(f"VCF conversion complete", flush=True)
         
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
         
-        # Load Zarr dataset with sgkit (try without dask chunking first for reliability)
+        # Load Zarr dataset with sgkit
         print(f"Loading Zarr dataset...", flush=True)
-        # Use auto-chunking for memory efficiency
-        dataset = sg.load_dataset(str(zarr_path), chunks='auto', **kwargs)
+        # Load with or without dask chunking based on use_dask parameter
+        chunks = 'auto' if use_dask else None
+        dataset = sg.load_dataset(str(zarr_path), chunks=chunks, **kwargs)
         
         # Validate dataset loaded correctly (without triggering computation)
         print(f"Dataset loaded: {len(dataset.variants)} variants, {len(dataset.samples)} samples", flush=True)
