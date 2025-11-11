@@ -21,7 +21,7 @@ from functools import wraps
 from pgstats.io.loaders import load_vcf_simple
 from pgstats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
-    theta_pi, theta_w, theta_h, theta_l, fay_wu_h
+    theta_pi, theta_w, theta_h, theta_l, fay_wu_h, singletons
 )
 from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from pgstats.stats.ld_statistics import (
@@ -1071,6 +1071,14 @@ class GenomicDataset:
                     stat: self._cached_garud_stats[stat]
                 }, coords=self._cached_garud_stats.coords)
                 
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
+            elif stat == 'singletons':
+                # Calculate folded singletons (minor allele count = 1)
+                stat_ds = singletons(self.windowed_dataset, folded=True)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
+            elif stat == 'singletons_unfolded':
+                # Calculate unfolded singletons (derived allele count = 1)
+                stat_ds = singletons(self.windowed_dataset, folded=False)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat == 'omega_statistic':
                 stat_ds = omega_statistic(self.windowed_dataset, enable_profiling=self.enable_profiling)

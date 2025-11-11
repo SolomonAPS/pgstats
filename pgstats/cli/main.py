@@ -163,6 +163,8 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
             'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
             # Haplotype statistics
             'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
+            # Singleton counts
+            'singletons', 'singletons_unfolded',
             # Special option
             'all'
         ],
@@ -490,7 +492,9 @@ def run_stats_command(args):
             # LD statistics
             'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
             # Haplotype statistics
-            'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1'
+            'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
+            # Singleton counts
+            'singletons', 'singletons_unfolded'
         ]
     else:
         stats_to_calculate = args.stats
