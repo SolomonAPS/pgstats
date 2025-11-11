@@ -204,16 +204,6 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
         
-        import zarr
-        try:
-            z = zarr.open(str(zarr_path), mode='r')
-            if 'variant_position' in z:
-                raw_positions = z['variant_position'][:]
-            else:
-                if 'variant_POS' in z:
-                    raw_positions = z['variant_POS'][:]
-        except Exception as e:
-        
         # Load Zarr dataset with sgkit
         # CRITICAL: Load without chunking to avoid dask corruption issues
         # For small-medium datasets, loading into memory is more reliable than lazy dask evaluation

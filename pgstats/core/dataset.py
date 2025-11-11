@@ -657,9 +657,6 @@ class GenomicDataset:
             else:
                 print(f"Creating position-based windows with size {window_size}", flush=True)
                 
-                positions = self.dataset.variant_position.values
-                if len(positions) > 0:
-                
                 try:
                     # Use window_by_position for base pair windows
                     # Could also use window_by_variant for variant count windows
@@ -668,10 +665,6 @@ class GenomicDataset:
                         size=window_size,
                         step=step_size
                     )
-                    
-                    if self.windowed_dataset is not None:
-                        n_wins = len(self.windowed_dataset.windows)
-                        if n_wins > 0:
                     
                 except Exception as e:
                     raise ValueError(f"Failed to create position-based windows: {e}")
