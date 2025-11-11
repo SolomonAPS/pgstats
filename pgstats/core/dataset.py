@@ -1647,20 +1647,21 @@ class GenomicDataset:
             
             # Add ALL statistics from the window_stats dataset
             # This includes: SFS stats, LD stats, haplotype stats, theta estimators, etc.
+            # But skip variables that are per-variant (not per-window) or metadata
             for var_name in self.window_stats.data_vars:
-                # Skip internal/coordinate variables that shouldn't be in output
+                values = self.window_stats[var_name].values
+                
+                # Skip internal/coordinate variables
                 skip_vars = ['window_start_idx', 'window_stop_idx']
-                if var_name not in skip_vars:
-                    values = self.window_stats[var_name].values
-                    # Debug: print variable info
-                    print(f"DEBUG: Variable '{var_name}' has shape {values.shape}, ndim={values.ndim}", flush=True)
-                    # Ensure values are 1-dimensional for DataFrame
-                    # If multi-dimensional, flatten or skip
-                    if values.ndim == 1:
-                        data[var_name] = values
-                    elif values.ndim > 1:
-                        # Skip multi-dimensional arrays (e.g., matrices)
-                        print(f"Warning: Skipping multi-dimensional variable '{var_name}' (shape: {values.shape})", flush=True)
+                if var_name in skip_vars:
+                    continue
+                
+                # Only include variables with 'windows' dimension (per-window statistics)
+                # Skip per-variant variables (variants dimension) and metadata
+                if values.ndim == 1 and len(values) == len(self.window_stats.windows):
+                    # This is a per-window statistic
+                    data[var_name] = values
+                # Skip everything else (per-variant data, metadata, multi-dimensional arrays)
             
             # Create DataFrame
             df = pd.DataFrame(data)
