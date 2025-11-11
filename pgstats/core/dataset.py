@@ -1651,7 +1651,14 @@ class GenomicDataset:
                 # Skip internal/coordinate variables that shouldn't be in output
                 skip_vars = ['window_start_idx', 'window_stop_idx']
                 if var_name not in skip_vars:
-                    data[var_name] = self.window_stats[var_name].values
+                    values = self.window_stats[var_name].values
+                    # Ensure values are 1-dimensional for DataFrame
+                    # If multi-dimensional, flatten or skip
+                    if values.ndim == 1:
+                        data[var_name] = values
+                    elif values.ndim > 1:
+                        # Skip multi-dimensional arrays (e.g., matrices)
+                        print(f"Warning: Skipping multi-dimensional variable '{var_name}' (shape: {values.shape})", flush=True)
             
             # Create DataFrame
             df = pd.DataFrame(data)
