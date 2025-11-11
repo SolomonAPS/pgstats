@@ -1637,21 +1637,12 @@ class GenomicDataset:
             if 'window_stop' in self.window_stats.coords:
                 data['window_stop'] = self.window_stats.window_stop.values
             
-            # Add statistics (only variables that look like statistics)
-            stat_names = [
-                'tajima_d', 'fu_li_d', 'fu_li_f', 'zeng_e', 'fay_wu_h',
-                'theta_pi', 'theta_w', 'theta_h', 'theta_l',
-                'callable_sites', 'n_variants',  # Add callable sites and n_variants to output
-                # LD statistics
-                'mean_d', 'mean_r', 'max_r', 'omega',
-                # Haplotype statistics
-                'haplotype_diversity', 'garud_h',
-                # Backward compatibility
-                'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta', 'pi'
-            ]
-            
+            # Add ALL statistics from the window_stats dataset
+            # This includes: SFS stats, LD stats, haplotype stats, theta estimators, etc.
             for var_name in self.window_stats.data_vars:
-                if any(stat in str(var_name).lower() for stat in stat_names):
+                # Skip internal/coordinate variables that shouldn't be in output
+                skip_vars = ['window_start_idx', 'window_stop_idx']
+                if var_name not in skip_vars:
                     data[var_name] = self.window_stats[var_name].values
             
             # Create DataFrame
