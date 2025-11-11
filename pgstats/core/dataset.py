@@ -1641,7 +1641,11 @@ class GenomicDataset:
             stat_names = [
                 'tajima_d', 'fu_li_d', 'fu_li_f', 'zeng_e', 'fay_wu_h',
                 'theta_pi', 'theta_w', 'theta_h', 'theta_l',
-                'callable_sites',  # Add callable sites to output
+                'callable_sites', 'n_variants',  # Add callable sites and n_variants to output
+                # LD statistics
+                'mean_d', 'mean_r', 'max_r', 'omega',
+                # Haplotype statistics
+                'haplotype_diversity', 'garud_h',
                 # Backward compatibility
                 'nucleotide_diversity', 'watterson_theta', 'fay_wu_theta', 'pi'
             ]
