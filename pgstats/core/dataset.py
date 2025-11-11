@@ -1652,6 +1652,8 @@ class GenomicDataset:
                 skip_vars = ['window_start_idx', 'window_stop_idx']
                 if var_name not in skip_vars:
                     values = self.window_stats[var_name].values
+                    # Debug: print variable info
+                    print(f"DEBUG: Variable '{var_name}' has shape {values.shape}, ndim={values.ndim}", flush=True)
                     # Ensure values are 1-dimensional for DataFrame
                     # If multi-dimensional, flatten or skip
                     if values.ndim == 1:
