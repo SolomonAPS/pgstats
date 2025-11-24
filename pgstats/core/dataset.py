@@ -903,13 +903,18 @@ class GenomicDataset:
     def calculate_windowed_stats(self, 
                                stats: List[str] = None,
                                use_callable_sites: bool = True,
-                               use_fixed_n: bool = False) -> xr.Dataset:
+                               use_fixed_n: bool = False,
+                               haplotype_ignore_missing: bool = False) -> xr.Dataset:
         """
         Calculate statistics for each window using sgkit's windowed dataset.
         
         Args:
             stats: List of statistics to calculate
             use_callable_sites: Whether to account for callable sites
+            use_fixed_n: Whether to use fixed sample size for theta_pi
+            haplotype_ignore_missing: If True, ignore missing data when hashing haplotypes
+                                     for Garud statistics. If False (default), missing data
+                                     is included in the hash.
             
         Returns:
             Dataset with windowed statistics
@@ -1064,7 +1069,10 @@ class GenomicDataset:
             elif stat in ['garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1']:
                 # Calculate all Garud H statistics at once if any are requested
                 if not hasattr(self, '_cached_garud_stats'):
-                    self._cached_garud_stats = garud_h_statistics(self.windowed_dataset)
+                    self._cached_garud_stats = garud_h_statistics(
+                        self.windowed_dataset,
+                        ignore_missing=haplotype_ignore_missing
+                    )
                 
                 # Extract the requested statistic
                 stat_ds = xr.Dataset({
@@ -1787,7 +1795,8 @@ class GenomicDataset:
                                     stats: List[str] = None,
                                     min_variants: int = 1,
                                     use_callable_sites: bool = True,
-                                    use_fixed_n: bool = False) -> pd.DataFrame:
+                                    use_fixed_n: bool = False,
+                                    haplotype_ignore_missing: bool = False) -> pd.DataFrame:
         """
         Calculate statistics for multiple genomic regions.
         
@@ -1804,6 +1813,10 @@ class GenomicDataset:
             stats: List of statistics to calculate (default: all available)
             min_variants: Minimum variants per window (default: 1)
             use_callable_sites: Whether to use callable sites mask (default: True)
+            use_fixed_n: Whether to use fixed sample size for theta_pi
+            haplotype_ignore_missing: If True, ignore missing data when hashing haplotypes
+                                     for Garud statistics. If False (default), missing data
+                                     is included in the hash.
             
         Returns:
             DataFrame with columns:
@@ -1899,7 +1912,8 @@ class GenomicDataset:
                 region_stats = self.calculate_windowed_stats(
                     stats=stats,
                     use_callable_sites=use_callable_sites,
-                    use_fixed_n=use_fixed_n
+                    use_fixed_n=use_fixed_n,
+                    haplotype_ignore_missing=haplotype_ignore_missing
                 )
                 
                 # Convert to DataFrame - only extract window-related variables

@@ -237,6 +237,11 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         help='Use fixed maximum sample size for theta_pi calculation (like SFS-based stats). Default uses per-site sample sizes.'
     )
     filter_group.add_argument(
+        '--haplotype-ignore-missing',
+        action='store_true',
+        help='Ignore missing data when hashing haplotypes for Garud statistics. If True, haplotypes that match at all non-missing positions are grouped together. If False (default), missing data is included in the hash.'
+    )
+    filter_group.add_argument(
         '--keep-zarr',
         action='store_true',
         help='Keep intermediate Zarr files for faster re-runs. Files saved next to output file by default.'
@@ -517,7 +522,8 @@ def run_stats_command(args):
                 stats=stats_to_calculate,
                 min_variants=args.min_variants,
                 use_callable_sites=True,
-                use_fixed_n=args.fixed_sample_size
+                use_fixed_n=args.fixed_sample_size,
+                haplotype_ignore_missing=args.haplotype_ignore_missing
             )
             
             print(f"  Calculated statistics for {len(results_df)} total windows")
@@ -546,7 +552,8 @@ def run_stats_command(args):
             window_stats = genomic_ds.calculate_windowed_stats(
                 stats=stats_to_calculate,
                 use_callable_sites=True,
-                use_fixed_n=args.fixed_sample_size
+                use_fixed_n=args.fixed_sample_size,
+                haplotype_ignore_missing=args.haplotype_ignore_missing
             )
             print(f"  Calculated statistics for {len(window_stats.windows)} windows")
             
