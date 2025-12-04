@@ -25,7 +25,7 @@ from pgstats.stats.sfs_statistics import (
 )
 from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from pgstats.stats.ld_statistics import (
-    calculate_ld_matrix, calculate_windowed_ld, omega_statistic
+    calculate_ld_matrix, calculate_windowed_ld, omega_statistic, kelly_zns
 )
 
 
@@ -930,7 +930,7 @@ class GenomicDataset:
                 # Theta estimators
                 'theta_pi', 'theta_w', 'theta_h', 'theta_l',
                 # LD statistics
-                'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
+                'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic', 'kelly_zns',
                 # Haplotype statistics
                 'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
                 # Singleton counts
@@ -1028,7 +1028,7 @@ class GenomicDataset:
                 ld_ds = calculate_windowed_ld(self.windowed_dataset)
                 result_dataset = result_dataset.merge(ld_ds)
             # Handle all LD statistics at once if any are requested
-            elif stat in ['ld_d', 'ld_dprime', 'ld_r2']:
+            elif stat in ['ld_d', 'ld_dprime', 'ld_r2', 'kelly_zns']:
                 # Only calculate LD once per window
                 if not hasattr(self, '_cached_ld_stats'):
                     
@@ -1047,7 +1047,8 @@ class GenomicDataset:
                 ld_var_map = {
                     'ld_d': 'mean_D',
                     'ld_dprime': 'mean_D_prime',
-                    'ld_r2': 'mean_r_squared'
+                    'ld_r2': 'mean_r_squared',
+                    'kelly_zns': 'kelly_zns'
                 }
                 
                 # Get the actual variable name from the cached LD stats
@@ -1173,7 +1174,7 @@ class GenomicDataset:
                 # Theta estimators
                 'theta_pi', 'theta_w', 'theta_h', 'theta_l',
                 # LD statistics
-                'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
+                'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic', 'kelly_zns',
                 # Haplotype statistics
                 'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
                 # Singleton counts
@@ -1738,6 +1739,7 @@ class GenomicDataset:
             'ld_dprime': 'mean_D_prime',
             'ld_r2': 'mean_r_squared',
             'omega_statistic': 'omega_statistic',
+            'kelly_zns': 'kelly_zns',
             'haplotype_diversity': 'haplotype_diversity',
             'garud_h1': 'garud_h1',
             'garud_h12': 'garud_h12',
@@ -1849,7 +1851,7 @@ class GenomicDataset:
                 # Theta estimators
                 'theta_pi', 'theta_w', 'theta_h', 'theta_l',
                 # LD statistics
-                'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic',
+                'ld_d', 'ld_dprime', 'ld_r2', 'omega_statistic', 'kelly_zns',
                 # Haplotype statistics
                 'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
                 # Singleton counts
@@ -1946,6 +1948,7 @@ class GenomicDataset:
                     'ld_dprime': ['mean_D_prime'],
                     'ld_r2': ['mean_r_squared'],
                     'omega_statistic': ['omega_statistic'],
+                    'kelly_zns': ['kelly_zns'],
                     'haplotype_diversity': ['haplotype_diversity'],
                     'garud_h1': ['garud_h1'],
                     'garud_h12': ['garud_h12'],

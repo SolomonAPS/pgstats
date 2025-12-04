@@ -74,118 +74,138 @@ def calculate_allele_frequencies(genotypes: np.ndarray) -> Tuple[float, float, i
 @numba.njit(nogil=True, fastmath=False)
 def calculate_ld_d(genotypes: np.ndarray) -> float:
     """
-    Calculate D (coefficient of linkage disequilibrium).
+    Calculate D (coefficient of linkage disequilibrium) from phased data.
     
-    For unphased genotype data, we use the correlation-based approach:
-    D = r * sqrt(p_A * (1-p_A) * p_B * (1-p_B))
+    For phased genotype data, we calculate D directly from gamete frequencies:
+    D = P_AB - p_A * p_B
     
-    where r is the correlation coefficient between the two loci.
+    where P_AB is the observed frequency of the AB gamete, and p_A, p_B are
+    the allele frequencies at the two loci.
     
-    Reference: Walsh and Lynch (2018) Equation 9.1
+    Reference: Walsh and Lynch (2018) Equation 2.18
     
     Args:
-        genotypes: Array of shape (n_samples, 2) with genotype data
+        genotypes: Array of shape (n_samples, 2, ploidy) with phased genotype data
+                  First dimension: samples
+                  Second dimension: [locus_A, locus_B]
+                  Third dimension: chromosomes (ploidy)
+                  Values: 0 (reference allele), 1 (alternate allele), -1 (missing)
         
     Returns:
         D value
     """
-    p_A, p_B, n_valid = calculate_allele_frequencies(genotypes)
+    n_samples, n_loci, ploidy = genotypes.shape
     
-    if n_valid < 2 or np.isnan(p_A) or np.isnan(p_B):
+    if n_loci != 2:
         return np.nan
     
-    # Calculate correlation coefficient
-    r = calculate_correlation_coefficient(genotypes)
+    # Count gamete types: AB, Ab, aB, ab
+    # Also count alleles for frequency calculation
+    count_AB = 0.0  # Both alternate
+    count_Ab = 0.0  # A alternate, B reference
+    count_aB = 0.0  # A reference, B alternate
+    count_ab = 0.0  # Both reference
+    n_valid_gametes = 0
+    n_A = 0.0  # Total alternate alleles at locus A
+    n_B = 0.0  # Total alternate alleles at locus B
+    n_valid_alleles = 0
     
-    if np.isnan(r):
+    for sample_idx in range(n_samples):
+        for chrom_idx in range(ploidy):
+            allele_A = genotypes[sample_idx, 0, chrom_idx]
+            allele_B = genotypes[sample_idx, 1, chrom_idx]
+            
+            # Skip if either allele is missing
+            if allele_A < 0 or allele_B < 0:
+                continue
+            
+            n_valid_gametes += 1
+            
+            # Count gamete types
+            if allele_A == 1 and allele_B == 1:
+                count_AB += 1
+            elif allele_A == 1 and allele_B == 0:
+                count_Ab += 1
+            elif allele_A == 0 and allele_B == 1:
+                count_aB += 1
+            else:  # allele_A == 0 and allele_B == 0
+                count_ab += 1
+            
+            # Count alleles for frequency calculation
+            if allele_A == 1:
+                n_A += 1
+            if allele_B == 1:
+                n_B += 1
+            n_valid_alleles += 2
+    
+    if n_valid_gametes == 0:
         return np.nan
     
-    # D = r * sqrt(p_A * (1-p_A) * p_B * (1-p_B))
-    D = r * np.sqrt(p_A * (1 - p_A) * p_B * (1 - p_B))
+    # Calculate gamete frequencies
+    P_AB = count_AB / n_valid_gametes
+    
+    # Calculate allele frequencies
+    if n_valid_alleles == 0:
+        return np.nan
+    p_A = n_A / n_valid_alleles
+    p_B = n_B / n_valid_alleles
+    
+    # Calculate D = P_AB - p_A * p_B
+    D = P_AB - p_A * p_B
     
     return D
 
 
 @numba.njit(nogil=True, fastmath=False)
-def calculate_correlation_coefficient(genotypes: np.ndarray) -> float:
-    """
-    Calculate correlation coefficient between two loci.
-    
-    This is the classic Pearson correlation coefficient adapted for genotype data.
-    
-    Args:
-        genotypes: Array of shape (n_samples, 2) with genotype data
-        
-    Returns:
-        Correlation coefficient r
-    """
-    n_samples = genotypes.shape[0]
-    
-    # Calculate means and variances
-    sum_x = sum_y = sum_x2 = sum_y2 = sum_xy = 0.0
-    n_valid = 0
-    
-    for i in range(n_samples):
-        x, y = genotypes[i, 0], genotypes[i, 1]
-        
-        # Skip missing data
-        if x < 0 or y < 0:
-            continue
-            
-        n_valid += 1
-        sum_x += x
-        sum_y += y
-        sum_x2 += x * x
-        sum_y2 += y * y
-        sum_xy += x * y
-    
-    if n_valid < 2:
-        return np.nan
-    
-    # Calculate means
-    mean_x = sum_x / n_valid
-    mean_y = sum_y / n_valid
-    
-    # Calculate covariance and variances
-    cov_xy = (sum_xy / n_valid) - (mean_x * mean_y)
-    var_x = (sum_x2 / n_valid) - (mean_x * mean_x)
-    var_y = (sum_y2 / n_valid) - (mean_y * mean_y)
-    
-    # Calculate correlation coefficient
-    if var_x <= 0 or var_y <= 0:
-        return np.nan
-    
-    r = cov_xy / np.sqrt(var_x * var_y)
-    
-    return r
-
-
-@numba.njit(nogil=True, fastmath=False)
 def calculate_ld_d_prime(genotypes: np.ndarray) -> float:
     """
-    Calculate D' (standardized D).
+    Calculate D' (standardized D) from phased data.
     
     D' = D / D_max where D_max is the maximum possible D given allele frequencies.
+    D_max depends on the sign of D:
+    - If D >= 0: D_max = min(p_A * (1-p_B), (1-p_A) * p_B)
+    - If D < 0: D_max = min(p_A * p_B, (1-p_A) * (1-p_B))
     
-    Reference: Walsh and Lynch (2018) Equation 9.2
+    This normalization bounds D' between -1 and 1.
     
     Args:
-        genotypes: Array of shape (n_samples, 2) with genotype data
+        genotypes: Array of shape (n_samples, 2, ploidy) with phased genotype data
         
     Returns:
         D' value
     """
-    p_A, p_B, n_valid = calculate_allele_frequencies(genotypes)
-    
-    if n_valid < 2 or np.isnan(p_A) or np.isnan(p_B):
-        return np.nan
-    
     D = calculate_ld_d(genotypes)
     
     if np.isnan(D):
         return np.nan
     
-    # Calculate D_max
+    # Calculate allele frequencies from phased data
+    n_samples, n_loci, ploidy = genotypes.shape
+    n_A = 0.0
+    n_B = 0.0
+    n_valid_alleles = 0
+    
+    for sample_idx in range(n_samples):
+        for chrom_idx in range(ploidy):
+            allele_A = genotypes[sample_idx, 0, chrom_idx]
+            allele_B = genotypes[sample_idx, 1, chrom_idx]
+            
+            if allele_A < 0 or allele_B < 0:
+                continue
+            
+            if allele_A == 1:
+                n_A += 1
+            if allele_B == 1:
+                n_B += 1
+            n_valid_alleles += 2
+    
+    if n_valid_alleles == 0:
+        return np.nan
+    
+    p_A = n_A / n_valid_alleles
+    p_B = n_B / n_valid_alleles
+    
+    # Calculate D_max based on sign of D
     if D >= 0:
         D_max = min(p_A * (1 - p_B), (1 - p_A) * p_B)
     else:
@@ -202,24 +222,68 @@ def calculate_ld_d_prime(genotypes: np.ndarray) -> float:
 @numba.njit(nogil=True, fastmath=False)
 def calculate_ld_r_squared(genotypes: np.ndarray) -> float:
     """
-    Calculate r² (squared correlation coefficient).
+    Calculate r² (squared correlation coefficient) from phased data.
     
-    This is the classic r² measure of linkage disequilibrium.
+    For phased data, we calculate r² directly from D and allele frequencies:
+    r² = D² / (p_A(1-p_A) * p_B(1-p_B))
     
-    Reference: Walsh and Lynch (2018) Equation 9.3
+    This is the standardized measure of linkage disequilibrium, defined as the
+    squared within-gamete correlation of allele frequencies at two loci.
+    
+    Reference: Walsh and Lynch (2018) Equation 2.22
     
     Args:
-        genotypes: Array of shape (n_samples, 2) with genotype data
+        genotypes: Array of shape (n_samples, 2, ploidy) with phased genotype data
+                  First dimension: samples
+                  Second dimension: [locus_A, locus_B]
+                  Third dimension: chromosomes (ploidy)
+                  Values: 0 (reference allele), 1 (alternate allele), -1 (missing)
         
     Returns:
         r² value
     """
-    r = calculate_correlation_coefficient(genotypes)
+    # Calculate D from phased data
+    D = calculate_ld_d(genotypes)
     
-    if np.isnan(r):
+    if np.isnan(D):
         return np.nan
     
-    return r * r
+    # Calculate allele frequencies from phased data
+    n_samples, n_loci, ploidy = genotypes.shape
+    n_A = 0.0
+    n_B = 0.0
+    n_valid_alleles = 0
+    
+    for sample_idx in range(n_samples):
+        for chrom_idx in range(ploidy):
+            allele_A = genotypes[sample_idx, 0, chrom_idx]
+            allele_B = genotypes[sample_idx, 1, chrom_idx]
+            
+            if allele_A < 0 or allele_B < 0:
+                continue
+            
+            if allele_A == 1:
+                n_A += 1
+            if allele_B == 1:
+                n_B += 1
+            n_valid_alleles += 2
+    
+    if n_valid_alleles == 0:
+        return np.nan
+    
+    p_A = n_A / n_valid_alleles
+    p_B = n_B / n_valid_alleles
+    
+    # Calculate denominator: p_A(1-p_A) * p_B(1-p_B)
+    denominator = p_A * (1 - p_A) * p_B * (1 - p_B)
+    
+    if denominator <= 0:
+        return np.nan
+    
+    # Calculate r² = D² / (p_A(1-p_A) * p_B(1-p_B))
+    r_squared = (D * D) / denominator
+    
+    return r_squared
 
 
 @numba.njit(nogil=True, fastmath=False)
@@ -270,8 +334,13 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
     
     for i in range(n_variants):
         for j in range(i + 1, n_variants):
-            # Get dosage for this pair
-            pair_genotypes = np.column_stack((dosage[i, :], dosage[j, :]))
+            # Extract phased genotype pair: shape (n_samples, 2, ploidy)
+            # First dimension: samples
+            # Second dimension: [variant_i, variant_j]
+            # Third dimension: chromosomes (ploidy)
+            pair_genotypes = np.zeros((n_samples, 2, ploidy), dtype=genotypes.dtype)
+            pair_genotypes[:, 0, :] = genotypes[i, :, :]  # variant i
+            pair_genotypes[:, 1, :] = genotypes[j, :, :]  # variant j
             
             # Calculate r²
             r_squared = calculate_ld_r_squared(pair_genotypes)
@@ -336,6 +405,63 @@ def calculate_omega_statistic(genotypes: np.ndarray, window_size: int = 10) -> f
     return max_omega if max_omega != -np.inf else np.nan
 
 
+@numba.njit(nogil=True, fastmath=False)
+def calculate_kelly_zns(genotypes: np.ndarray) -> float:
+    """
+    Calculate Kelly's Z_nS statistic.
+    
+    Z_nS is the average of all pairwise r² values within a region:
+    Z_nS = (2 / (S(S - 1))) * Σ (from i=1 to S-1) Σ (from j=i+1 to S) r²_ij
+    
+    where S is the number of segregating sites and r²_ij is the squared
+    correlation coefficient between sites i and j.
+    
+    Reference: Walsh and Lynch (2018) Equation 9.36b
+    Kelly (1997) Genetics 145:833-846
+    
+    Args:
+        genotypes: Array of shape (n_variants, n_samples, ploidy) with genotype calls
+        
+    Returns:
+        Z_nS value (average pairwise r²)
+    """
+    n_variants, n_samples, ploidy = genotypes.shape
+    
+    if n_variants < 2:  # Need at least 2 variants for pairwise comparison
+        return np.nan
+    
+    # Calculate all pairwise r² values and compute mean directly
+    sum_rsq = 0.0
+    n_valid_pairs = 0
+    
+    for i in range(n_variants):
+        for j in range(i + 1, n_variants):
+            # Extract phased genotype pair: shape (n_samples, 2, ploidy)
+            # First dimension: samples
+            # Second dimension: [variant_i, variant_j]
+            # Third dimension: chromosomes (ploidy)
+            pair_genotypes = np.zeros((n_samples, 2, ploidy), dtype=genotypes.dtype)
+            pair_genotypes[:, 0, :] = genotypes[i, :, :]  # variant i
+            pair_genotypes[:, 1, :] = genotypes[j, :, :]  # variant j
+            
+            # Calculate r²
+            r_squared = calculate_ld_r_squared(pair_genotypes)
+            
+            if not np.isnan(r_squared):
+                sum_rsq += r_squared
+                n_valid_pairs += 1
+    
+    if n_valid_pairs == 0:
+        return np.nan
+    
+    # Z_nS is the mean of all pairwise r² values
+    # This is equivalent to: (2 / (S(S-1))) * sum(r²_ij)
+    # where the normalization factor accounts for the number of pairs
+    zns = sum_rsq / n_valid_pairs
+    
+    return zns
+
+
 # =============================================================================
 # HIGH-LEVEL LD FUNCTIONS (USER-FACING)
 # =============================================================================
@@ -357,9 +483,6 @@ def calculate_ld_matrix(ds: xr.Dataset,
     genotypes = ds[call_genotype].values
     n_variants, n_samples, ploidy = genotypes.shape
     
-    # Convert to dosage format (sum of alleles)
-    dosage = genotypes.sum(axis=2)  # Shape: (n_variants, n_samples)
-    
     # Get variant positions
     positions = ds.variant_position.values
     
@@ -374,8 +497,13 @@ def calculate_ld_matrix(ds: xr.Dataset,
                 if distance > max_distance:
                     continue
             
-            # Extract genotype pair
-            pair_genotypes = np.column_stack([dosage[i, :], dosage[j, :]])
+            # Extract phased genotype pair: shape (n_samples, 2, ploidy)
+            # First dimension: samples
+            # Second dimension: [variant_i, variant_j]
+            # Third dimension: chromosomes (ploidy)
+            pair_genotypes = np.zeros((n_samples, 2, ploidy), dtype=genotypes.dtype)
+            pair_genotypes[:, 0, :] = genotypes[i, :, :]  # variant i
+            pair_genotypes[:, 1, :] = genotypes[j, :, :]  # variant j
             
             # Calculate LD statistics
             D = calculate_ld_d(pair_genotypes)
@@ -444,9 +572,6 @@ def calculate_windowed_ld(ds: xr.Dataset,
     genotypes = ds[call_genotype].values
     n_variants, n_samples, ploidy = genotypes.shape
     
-    # Convert to dosage format
-    dosage = genotypes.sum(axis=2)
-    
     # Get variant positions and window information
     positions = ds.variant_position.values
     
@@ -474,6 +599,7 @@ def calculate_windowed_ld(ds: xr.Dataset,
     mean_r_squared = np.full(n_windows, np.nan)
     max_r_squared = np.full(n_windows, np.nan)
     mean_distance = np.full(n_windows, np.nan)
+    kelly_zns = np.full(n_windows, np.nan)
     
     if enable_profiling:
         import time
@@ -500,8 +626,13 @@ def calculate_windowed_ld(ds: xr.Dataset,
             for j in range(i + 1, len(window_variants)):
                 var_i, var_j = window_variants[i], window_variants[j]
                 
-                # Extract genotype pair
-                pair_genotypes = np.column_stack([dosage[var_i, :], dosage[var_j, :]])
+                # Extract phased genotype pair: shape (n_samples, 2, ploidy)
+                # First dimension: samples
+                # Second dimension: [variant_i, variant_j]
+                # Third dimension: chromosomes (ploidy)
+                pair_genotypes = np.zeros((n_samples, 2, ploidy), dtype=genotypes.dtype)
+                pair_genotypes[:, 0, :] = genotypes[var_i, :, :]  # variant i
+                pair_genotypes[:, 1, :] = genotypes[var_j, :, :]  # variant j
                 
                 # Calculate LD statistics with error handling
                 try:
@@ -533,6 +664,7 @@ def calculate_windowed_ld(ds: xr.Dataset,
             mean_r_squared[w_idx] = window_df['r_squared'].mean()
             max_r_squared[w_idx] = window_df['r_squared'].max()
             mean_distance[w_idx] = window_df['distance'].mean()
+            kelly_zns[w_idx] = window_df['r_squared'].mean()
     
     # Create result dataset with same number of windows as input
     result = xr.Dataset()
@@ -561,7 +693,8 @@ def calculate_windowed_ld(ds: xr.Dataset,
         'mean_D_prime': (['windows'], mean_D_prime),
         'mean_r_squared': (['windows'], mean_r_squared),
         'max_r_squared': (['windows'], max_r_squared),
-        'mean_distance': (['windows'], mean_distance)
+        'mean_distance': (['windows'], mean_distance),
+        'kelly_zns': (['windows'], kelly_zns)
     })
     
     
@@ -700,5 +833,70 @@ def omega_statistic(ds: xr.Dataset,
     if enable_profiling:
         elapsed = time.time() - start_time
         print(f"[Timing] Omega statistic calculation completed in {elapsed:.2f}s", flush=True)
+    
+    return result
+
+
+def kelly_zns(ds: xr.Dataset,
+              call_genotype: str = "call_genotype",
+              enable_profiling: bool = False) -> xr.Dataset:
+    """
+    Calculate Kelly's Z_nS statistic for detecting selective sweeps.
+    
+    Z_nS is the average of all pairwise r² values within a region. It is
+    computed as:
+    Z_nS = (2 / (S(S - 1))) * Σ (from i=1 to S-1) Σ (from j=i+1 to S) r²_ij
+    
+    where S is the number of segregating sites and r²_ij is the squared
+    correlation coefficient between sites i and j.
+    
+    Kelly (1997) showed that Z_nS values are largely determined by the final
+    coalescent time in the sample. A small Z_nS value is consistent with a hard
+    sweep or extreme bottleneck, while a partial or soft sweep increases Z_nS.
+    
+    This function calculates Z_nS for each window in the dataset.
+    
+    Reference: Walsh and Lynch (2018) Equation 9.36b
+    Kelly (1997) Genetics 145:833-846
+    
+    Args:
+        ds: sgkit Dataset containing genotype calls and windows
+        call_genotype: Name of the genotype variable
+        enable_profiling: Whether to print timing info
+        
+    Returns:
+        Dataset with Z_nS statistic values per window
+    """
+    if enable_profiling:
+        import time
+        start_time = time.time()
+    
+    genotypes = ds[call_genotype].values
+    n_variants, n_samples, ploidy = genotypes.shape
+    
+    # Get window information (windows are always defined)
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
+    
+    # Calculate Z_nS for each window
+    zns_values = np.full(n_windows, np.nan)
+    
+    for w_idx in range(n_windows):
+        window_start = window_starts[w_idx]
+        window_stop = window_stops[w_idx]
+        window_genotypes = genotypes[window_start:window_stop, :, :]
+        
+        # Calculate Z_nS for this window
+        if len(window_genotypes) >= 2:  # Need at least 2 variants for pairwise comparison
+            zns_values[w_idx] = calculate_kelly_zns(window_genotypes)
+    
+    # Create result dataset
+    result = ds.copy()
+    result["kelly_zns"] = (["windows"], zns_values)
+    
+    if enable_profiling:
+        elapsed = time.time() - start_time
+        print(f"[Timing] Kelly Z_nS calculation completed in {elapsed:.2f}s", flush=True)
     
     return result

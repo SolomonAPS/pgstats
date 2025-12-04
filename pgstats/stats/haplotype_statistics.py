@@ -161,15 +161,19 @@ def filter_haplotypes_by_missingness(haplotypes: np.ndarray,
 # =============================================================================
 
 @numba.njit(nogil=True, fastmath=False)
-def calculate_haplotype_diversity(haplotypes: np.ndarray) -> float:
+def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool = False) -> float:
     """
     Calculate haplotype diversity (H) - the probability that two randomly
     chosen haplotypes are different.
     
-    Reference: Walsh and Lynch (2018) Equation 9.9
+    H = (1 - sum(f_i^2)) * n / (n - 1)
+    where f_i is the frequency of haplotype i and n is the number of haplotypes.
     
     Args:
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
+                  0 = reference allele, 1 = alternate allele, -1 = missing
+        ignore_missing: If True, ignore missing data (-1) in hashing
+                        If False, include missing data in hash (default sgkit behavior)
     
     Returns:
         Haplotype diversity value
@@ -180,31 +184,30 @@ def calculate_haplotype_diversity(haplotypes: np.ndarray) -> float:
     if n_variants == 0 or n_haplotypes < 2:
         return np.nan
     
-    # Count unique haplotypes
-    unique_haplotypes = 0
-    total_haplotypes = 0
+    # Hash all haplotypes to identify unique haplotypes
+    hash_values = hash_haplotypes(haplotypes, ignore_missing)
     
-    for var_idx in range(n_variants):
-        # Get haplotypes for this variant (excluding missing data)
-        var_haplotypes = haplotypes[var_idx, :]
-        valid_haplotypes = var_haplotypes[var_haplotypes != -1]
-        
-        if len(valid_haplotypes) < 2:
-            continue
-        
-        # Count unique haplotypes
-        unique_count = len(np.unique(valid_haplotypes))
-        total_count = len(valid_haplotypes)
-        
-        unique_haplotypes += unique_count
-        total_haplotypes += total_count
+    # Count haplotype frequencies
+    unique_hashes, counts = count_unique_values(hash_values)
     
-    if total_haplotypes == 0:
+    # Protect against division by zero
+    if n_haplotypes == 0 or len(counts) == 0:
         return np.nan
     
-    # Calculate diversity as 1 - sum of squared frequencies
-    # For simplicity, we'll use a basic approach
-    diversity = 1.0 - (unique_haplotypes / total_haplotypes)
+    # Calculate frequencies
+    frequencies = counts.astype(np.float64) / n_haplotypes
+    
+    # Calculate haplotype diversity using Nei's formula
+    # H = (1 - sum(f_i^2)) * n / (n - 1)
+    sum_squared_freq = 0.0
+    for i in range(len(frequencies)):
+        sum_squared_freq += frequencies[i] * frequencies[i]
+    
+    # Apply finite population correction: n / (n - 1)
+    if n_haplotypes > 1:
+        diversity = (1.0 - sum_squared_freq) * n_haplotypes / (n_haplotypes - 1.0)
+    else:
+        diversity = 0.0
     
     return diversity
 
@@ -312,16 +315,23 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
 # =============================================================================
 
 def haplotype_diversity(ds: xr.Dataset, 
-                       call_genotype: str = "call_genotype") -> xr.Dataset:
+                       call_genotype: str = "call_genotype",
+                       ignore_missing: bool = False) -> xr.Dataset:
     """
-    Calculate haplotype diversity for each variant using sgkit's hashing approach.
+    Calculate haplotype diversity for each window using Nei's gene diversity formula.
+    
+    Uses the formula: H = (1 - sum(f_i^2)) * n / (n - 1)
+    where f_i is the frequency of haplotype i and n is the number of haplotypes.
     
     References:
     - Walsh and Lynch (2018) Equation 9.9
+    - Nei (1987) Molecular Evolutionary Genetics
     
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable
+        ignore_missing: If True, ignore missing data (-1) in hashing
+                        If False, include missing data in hash (default sgkit behavior)
         
     Returns:
         Dataset with haplotype diversity values
@@ -343,7 +353,7 @@ def haplotype_diversity(ds: xr.Dataset,
         window_start = window_starts[w_idx]
         window_stop = window_stops[w_idx]
         window_haplotypes = haplotypes[window_start:window_stop, :]
-        diversity_values[w_idx] = calculate_haplotype_diversity(window_haplotypes)
+        diversity_values[w_idx] = calculate_haplotype_diversity(window_haplotypes, ignore_missing)
     
     # Create result dataset
     result = ds.copy()
@@ -459,8 +469,8 @@ def calculate_windowed_haplotype_stats(ds: xr.Dataset,
         haplotypes = estimate_haplotypes_from_phased_data(window_genotypes)
         
         # Calculate statistics
-        diversity = calculate_haplotype_diversity(haplotypes)
-        garud_stats = calculate_garud_h_statistics(haplotypes)
+        diversity = calculate_haplotype_diversity(haplotypes, ignore_missing=False)
+        garud_stats = calculate_garud_h_statistics(haplotypes, ignore_missing=False)
         
         window_results.append({
             'window_start': window_start,
