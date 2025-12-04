@@ -359,13 +359,19 @@ def haplotype_diversity(ds: xr.Dataset,
     # Calculate haplotype diversity for each window
     diversity_values = np.zeros(n_windows)
     
-    # Print debug header
-    print("\n[DEBUG] Haplotype Diversity Diagnostics:", flush=True)
-    print("=" * 120, flush=True)
-    print(f"{'Window':<8} {'Win_Size':<10} {'N_Var':<7} {'N_Hap':<7} {'Missing_Rate':<13} {'N_Var_Miss':<11} {'N_Hap_Miss':<11} "
-          f"{'N_Unique':<9} {'N_Unique_Ig':<12} {'N_Sing':<8} {'N_Sing_Ig':<11} {'Diversity':<11} {'Diversity_Ig':<14} "
-          f"{'Sum_Freq^2':<11} {'Sum_Freq^2_Ig':<14} {'Top3_Freq':<20}", flush=True)
-    print("=" * 120, flush=True)
+    # Write debug output to file (append mode for multiple runs, TSV format)
+    import os
+    from datetime import datetime
+    debug_file = os.environ.get('PGSTATS_DEBUG_FILE', 'haplotype_diversity_debug.txt')
+    run_id = os.environ.get('PGSTATS_RUN_ID', datetime.now().strftime('%Y%m%d_%H%M%S'))
+    
+    # Write header only if file doesn't exist (TSV format for easy pandas import)
+    file_exists = os.path.exists(debug_file)
+    with open(debug_file, 'a') as f:
+        if not file_exists:
+            f.write("Run_ID\tWindow\tWin_Size\tN_Var\tN_Hap\tMissing_Rate\tN_Var_Miss\tN_Hap_Miss\t"
+                    "N_Unique\tN_Unique_Ig\tN_Sing\tN_Sing_Ig\tDiversity\tDiversity_Ig\t"
+                    "Sum_Freq2\tSum_Freq2_Ig\tTop1_Freq\tTop2_Freq\tTop3_Freq\n")
     
     for w_idx in range(n_windows):
         window_start = window_starts[w_idx]
@@ -415,13 +421,15 @@ def haplotype_diversity(ds: xr.Dataset,
         else:
             win_size_bp = 0
         
-        # Print debug info
-        print(f"{w_idx:<8} {win_size_bp:<10} {n_variants_win:<7} {n_haplotypes_win:<7} {missing_rate:<13.6f} {variants_with_missing:<11} {haplotypes_with_missing:<11} "
-              f"{n_unique_false:<9} {n_unique_true:<12} {n_singletons_false:<8} {n_singletons_true:<11} "
-              f"{diversity_false:<11.6f} {diversity_true:<14.6f} {sum_freq_sq_false:<11.6f} {sum_freq_sq_true:<14.6f} "
-              f"{top3_freq_false[0]:.3f},{top3_freq_false[1]:.3f},{top3_freq_false[2]:.3f}", flush=True)
+        # Write debug info to file (TSV format)
+        with open(debug_file, 'a') as f:
+            f.write(f"{run_id}\t{w_idx}\t{win_size_bp}\t{n_variants_win}\t{n_haplotypes_win}\t{missing_rate:.6f}\t"
+                   f"{variants_with_missing}\t{haplotypes_with_missing}\t"
+                   f"{n_unique_false}\t{n_unique_true}\t{n_singletons_false}\t{n_singletons_true}\t"
+                   f"{diversity_false:.6f}\t{diversity_true:.6f}\t{sum_freq_sq_false:.6f}\t{sum_freq_sq_true:.6f}\t"
+                   f"{top3_freq_false[0]:.6f}\t{top3_freq_false[1]:.6f}\t{top3_freq_false[2]:.6f}\n")
     
-    print("=" * 120, flush=True)
+    print(f"[DEBUG] Haplotype diversity diagnostics written to {debug_file}", flush=True)
     
     # Create result dataset
     result = ds.copy()
@@ -482,13 +490,20 @@ def garud_h_statistics(ds: xr.Dataset,
     h123_values = np.zeros(n_windows)
     h2_h1_values = np.zeros(n_windows)
     
-    # Print debug header
-    print("\n[DEBUG] Garud H Statistics Diagnostics:", flush=True)
-    print("=" * 140, flush=True)
-    print(f"{'Window':<8} {'Win_Size':<10} {'N_Var':<7} {'N_Hap':<7} {'Missing_Rate':<13} {'N_Var_Miss':<11} {'N_Hap_Miss':<11} "
-          f"{'N_Unique':<9} {'N_Unique_Ig':<12} {'N_Sing':<8} {'N_Sing_Ig':<11} {'H1':<10} {'H1_Ig':<10} "
-          f"{'H12':<10} {'H12_Ig':<11} {'H123':<10} {'H123_Ig':<11} {'H2_H1':<10} {'H2_H1_Ig':<11} {'Top3_Freq':<20}", flush=True)
-    print("=" * 140, flush=True)
+    # Write debug output to file (append mode for multiple runs, TSV format)
+    import os
+    from datetime import datetime
+    debug_file = os.environ.get('PGSTATS_DEBUG_FILE', 'garud_stats_debug.txt')
+    run_id = os.environ.get('PGSTATS_RUN_ID', datetime.now().strftime('%Y%m%d_%H%M%S'))
+    
+    # Write header only if file doesn't exist (TSV format for easy pandas import)
+    file_exists = os.path.exists(debug_file)
+    with open(debug_file, 'a') as f:
+        if not file_exists:
+            f.write("Run_ID\tWindow\tWin_Size\tN_Var\tN_Hap\tMissing_Rate\tN_Var_Miss\tN_Hap_Miss\t"
+                    "N_Unique\tN_Unique_Ig\tN_Sing\tN_Sing_Ig\t"
+                    "H1\tH1_Ig\tH12\tH12_Ig\tH123\tH123_Ig\tH2_H1\tH2_H1_Ig\t"
+                    "Top1_Freq\tTop2_Freq\tTop3_Freq\n")
     
     for w_idx in range(n_windows):
         window_start = window_starts[w_idx]
@@ -559,14 +574,16 @@ def garud_h_statistics(ds: xr.Dataset,
         else:
             win_size_bp = 0
         
-        # Print debug info
-        print(f"{w_idx:<8} {win_size_bp:<10} {n_variants_win:<7} {n_haplotypes_win:<7} {missing_rate:<13.6f} {variants_with_missing:<11} {haplotypes_with_missing:<11} "
-              f"{n_unique_false:<9} {n_unique_true:<12} {n_singletons_false:<8} {n_singletons_true:<11} "
-              f"{stats_false[0]:<10.6f} {stats_true[0]:<10.6f} {stats_false[1]:<10.6f} {stats_true[1]:<11.6f} "
-              f"{stats_false[2]:<10.6f} {stats_true[2]:<11.6f} {stats_false[3]:<10.6f} {stats_true[3]:<11.6f} "
-              f"{top3_freq_false[0]:.3f},{top3_freq_false[1]:.3f},{top3_freq_false[2]:.3f}", flush=True)
+        # Write debug info to file (TSV format)
+        with open(debug_file, 'a') as f:
+            f.write(f"{run_id}\t{w_idx}\t{win_size_bp}\t{n_variants_win}\t{n_haplotypes_win}\t{missing_rate:.6f}\t"
+                   f"{variants_with_missing}\t{haplotypes_with_missing}\t"
+                   f"{n_unique_false}\t{n_unique_true}\t{n_singletons_false}\t{n_singletons_true}\t"
+                   f"{stats_false[0]:.6f}\t{stats_true[0]:.6f}\t{stats_false[1]:.6f}\t{stats_true[1]:.6f}\t"
+                   f"{stats_false[2]:.6f}\t{stats_true[2]:.6f}\t{stats_false[3]:.6f}\t{stats_true[3]:.6f}\t"
+                   f"{top3_freq_false[0]:.6f}\t{top3_freq_false[1]:.6f}\t{top3_freq_false[2]:.6f}\n")
     
-    print("=" * 140, flush=True)
+    print(f"[DEBUG] Garud stats diagnostics written to {debug_file}", flush=True)
     
     # Create result dataset
     result = ds.copy()
