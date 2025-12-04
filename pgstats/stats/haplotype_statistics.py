@@ -347,13 +347,81 @@ def haplotype_diversity(ds: xr.Dataset,
     window_starts = ds.window_start_idx.values
     window_stops = ds.window_stop_idx.values
     
+    # Get window positions for debug output
+    positions = ds.variant_position.values
+    window_start_positions = []
+    window_stop_positions = []
+    if 'window_start' in ds.coords:
+        window_start_positions = ds.window_start.values
+    if 'window_stop' in ds.coords:
+        window_stop_positions = ds.window_stop.values
+    
     # Calculate haplotype diversity for each window
     diversity_values = np.zeros(n_windows)
+    
+    # Print debug header
+    print("\n[DEBUG] Haplotype Diversity Diagnostics:", flush=True)
+    print("=" * 120, flush=True)
+    print(f"{'Window':<8} {'Win_Size':<10} {'N_Var':<7} {'N_Hap':<7} {'Missing_Rate':<13} {'N_Var_Miss':<11} {'N_Hap_Miss':<11} "
+          f"{'N_Unique':<9} {'N_Unique_Ig':<12} {'N_Sing':<8} {'N_Sing_Ig':<11} {'Diversity':<11} {'Diversity_Ig':<14} "
+          f"{'Sum_Freq^2':<11} {'Sum_Freq^2_Ig':<14} {'Top3_Freq':<20}", flush=True)
+    print("=" * 120, flush=True)
+    
     for w_idx in range(n_windows):
         window_start = window_starts[w_idx]
         window_stop = window_stops[w_idx]
         window_haplotypes = haplotypes[window_start:window_stop, :]
         diversity_values[w_idx] = calculate_haplotype_diversity(window_haplotypes, ignore_missing)
+        
+        # Calculate debug info
+        n_variants_win = window_haplotypes.shape[0]
+        n_haplotypes_win = window_haplotypes.shape[1]
+        
+        # Calculate missing data metrics
+        total_calls = n_variants_win * n_haplotypes_win
+        missing_calls = np.sum(window_haplotypes == -1)
+        missing_rate = missing_calls / total_calls if total_calls > 0 else 0.0
+        
+        # Count variants with any missing data
+        variants_with_missing = np.sum(np.any(window_haplotypes == -1, axis=1))
+        # Count haplotypes with any missing data
+        haplotypes_with_missing = np.sum(np.any(window_haplotypes == -1, axis=0))
+        
+        # With ignore_missing=False
+        hash_values_false = hash_haplotypes(window_haplotypes, False)
+        unique_hashes_false, counts_false = count_unique_values(hash_values_false)
+        n_unique_false = len(unique_hashes_false)
+        n_singletons_false = np.sum(counts_false == 1)
+        frequencies_false = counts_false.astype(np.float64) / n_haplotypes_win
+        sum_freq_sq_false = np.sum(frequencies_false ** 2)
+        diversity_false = calculate_haplotype_diversity(window_haplotypes, False)
+        frequencies_false_sorted = np.sort(frequencies_false)[::-1]
+        top3_freq_false = frequencies_false_sorted[:3] if len(frequencies_false_sorted) >= 3 else list(frequencies_false_sorted) + [0.0] * (3 - len(frequencies_false_sorted))
+        
+        # With ignore_missing=True
+        hash_values_true = hash_haplotypes(window_haplotypes, True)
+        unique_hashes_true, counts_true = count_unique_values(hash_values_true)
+        n_unique_true = len(unique_hashes_true)
+        n_singletons_true = np.sum(counts_true == 1)
+        frequencies_true = counts_true.astype(np.float64) / n_haplotypes_win
+        sum_freq_sq_true = np.sum(frequencies_true ** 2)
+        diversity_true = calculate_haplotype_diversity(window_haplotypes, True)
+        frequencies_true_sorted = np.sort(frequencies_true)[::-1]
+        top3_freq_true = frequencies_true_sorted[:3] if len(frequencies_true_sorted) >= 3 else list(frequencies_true_sorted) + [0.0] * (3 - len(frequencies_true_sorted))
+        
+        # Get window size in bp
+        if len(window_start_positions) > w_idx and len(window_stop_positions) > w_idx:
+            win_size_bp = window_stop_positions[w_idx] - window_start_positions[w_idx] + 1
+        else:
+            win_size_bp = 0
+        
+        # Print debug info
+        print(f"{w_idx:<8} {win_size_bp:<10} {n_variants_win:<7} {n_haplotypes_win:<7} {missing_rate:<13.6f} {variants_with_missing:<11} {haplotypes_with_missing:<11} "
+              f"{n_unique_false:<9} {n_unique_true:<12} {n_singletons_false:<8} {n_singletons_true:<11} "
+              f"{diversity_false:<11.6f} {diversity_true:<14.6f} {sum_freq_sq_false:<11.6f} {sum_freq_sq_true:<14.6f} "
+              f"{top3_freq_false[0]:.3f},{top3_freq_false[1]:.3f},{top3_freq_false[2]:.3f}", flush=True)
+    
+    print("=" * 120, flush=True)
     
     # Create result dataset
     result = ds.copy()
@@ -399,11 +467,28 @@ def garud_h_statistics(ds: xr.Dataset,
     window_starts = ds.window_start_idx.values
     window_stops = ds.window_stop_idx.values
     
+    # Get window positions for debug output
+    positions = ds.variant_position.values
+    window_start_positions = []
+    window_stop_positions = []
+    if 'window_start' in ds.coords:
+        window_start_positions = ds.window_start.values
+    if 'window_stop' in ds.coords:
+        window_stop_positions = ds.window_stop.values
+    
     # Calculate Garud H statistics for each window
     h1_values = np.zeros(n_windows)
     h12_values = np.zeros(n_windows)
     h123_values = np.zeros(n_windows)
     h2_h1_values = np.zeros(n_windows)
+    
+    # Print debug header
+    print("\n[DEBUG] Garud H Statistics Diagnostics:", flush=True)
+    print("=" * 140, flush=True)
+    print(f"{'Window':<8} {'Win_Size':<10} {'N_Var':<7} {'N_Hap':<7} {'Missing_Rate':<13} {'N_Var_Miss':<11} {'N_Hap_Miss':<11} "
+          f"{'N_Unique':<9} {'N_Unique_Ig':<12} {'N_Sing':<8} {'N_Sing_Ig':<11} {'H1':<10} {'H1_Ig':<10} "
+          f"{'H12':<10} {'H12_Ig':<11} {'H123':<10} {'H123_Ig':<11} {'H2_H1':<10} {'H2_H1_Ig':<11} {'Top3_Freq':<20}", flush=True)
+    print("=" * 140, flush=True)
     
     for w_idx in range(n_windows):
         window_start = window_starts[w_idx]
@@ -415,6 +500,73 @@ def garud_h_statistics(ds: xr.Dataset,
         h12_values[w_idx] = stats[1]
         h123_values[w_idx] = stats[2]
         h2_h1_values[w_idx] = stats[3]
+        
+        # Calculate debug info
+        n_variants_win = window_haplotypes.shape[0]
+        n_haplotypes_win = window_haplotypes.shape[1]
+        
+        # Calculate missing data metrics
+        total_calls = n_variants_win * n_haplotypes_win
+        missing_calls = np.sum(window_haplotypes == -1)
+        missing_rate = missing_calls / total_calls if total_calls > 0 else 0.0
+        
+        # Count variants with any missing data
+        variants_with_missing = np.sum(np.any(window_haplotypes == -1, axis=1))
+        # Count haplotypes with any missing data
+        haplotypes_with_missing = np.sum(np.any(window_haplotypes == -1, axis=0))
+        
+        # With ignore_missing=False
+        valid_mask_false = filter_haplotypes_by_missingness(window_haplotypes, max_missing, missing_is_percentage)
+        valid_haplotypes_false = window_haplotypes[:, valid_mask_false]
+        n_valid_false = np.sum(valid_mask_false)
+        if n_valid_false >= 2:
+            hash_values_false = hash_haplotypes(valid_haplotypes_false, False)
+            unique_hashes_false, counts_false = count_unique_values(hash_values_false)
+            n_unique_false = len(unique_hashes_false)
+            n_singletons_false = np.sum(counts_false == 1)
+            frequencies_false = counts_false / n_valid_false
+            frequencies_false_sorted = np.sort(frequencies_false)[::-1]
+            stats_false = calculate_garud_h_statistics(window_haplotypes, False, max_missing, missing_is_percentage)
+            top3_freq_false = frequencies_false_sorted[:3] if len(frequencies_false_sorted) >= 3 else list(frequencies_false_sorted) + [0.0] * (3 - len(frequencies_false_sorted))
+        else:
+            n_unique_false = 0
+            n_singletons_false = 0
+            stats_false = np.array([np.nan, np.nan, np.nan, np.nan])
+            top3_freq_false = [0.0, 0.0, 0.0]
+        
+        # With ignore_missing=True
+        valid_mask_true = filter_haplotypes_by_missingness(window_haplotypes, max_missing, missing_is_percentage)
+        valid_haplotypes_true = window_haplotypes[:, valid_mask_true]
+        n_valid_true = np.sum(valid_mask_true)
+        if n_valid_true >= 2:
+            hash_values_true = hash_haplotypes(valid_haplotypes_true, True)
+            unique_hashes_true, counts_true = count_unique_values(hash_values_true)
+            n_unique_true = len(unique_hashes_true)
+            n_singletons_true = np.sum(counts_true == 1)
+            frequencies_true = counts_true / n_valid_true
+            frequencies_true_sorted = np.sort(frequencies_true)[::-1]
+            stats_true = calculate_garud_h_statistics(window_haplotypes, True, max_missing, missing_is_percentage)
+            top3_freq_true = frequencies_true_sorted[:3] if len(frequencies_true_sorted) >= 3 else list(frequencies_true_sorted) + [0.0] * (3 - len(frequencies_true_sorted))
+        else:
+            n_unique_true = 0
+            n_singletons_true = 0
+            stats_true = np.array([np.nan, np.nan, np.nan, np.nan])
+            top3_freq_true = [0.0, 0.0, 0.0]
+        
+        # Get window size in bp
+        if len(window_start_positions) > w_idx and len(window_stop_positions) > w_idx:
+            win_size_bp = window_stop_positions[w_idx] - window_start_positions[w_idx] + 1
+        else:
+            win_size_bp = 0
+        
+        # Print debug info
+        print(f"{w_idx:<8} {win_size_bp:<10} {n_variants_win:<7} {n_haplotypes_win:<7} {missing_rate:<13.6f} {variants_with_missing:<11} {haplotypes_with_missing:<11} "
+              f"{n_unique_false:<9} {n_unique_true:<12} {n_singletons_false:<8} {n_singletons_true:<11} "
+              f"{stats_false[0]:<10.6f} {stats_true[0]:<10.6f} {stats_false[1]:<10.6f} {stats_true[1]:<11.6f} "
+              f"{stats_false[2]:<10.6f} {stats_true[2]:<11.6f} {stats_false[3]:<10.6f} {stats_true[3]:<11.6f} "
+              f"{top3_freq_false[0]:.3f},{top3_freq_false[1]:.3f},{top3_freq_false[2]:.3f}", flush=True)
+    
+    print("=" * 140, flush=True)
     
     # Create result dataset
     result = ds.copy()

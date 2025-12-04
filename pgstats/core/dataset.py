@@ -1065,7 +1065,7 @@ class GenomicDataset:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'haplotype_diversity':
-                stat_ds = haplotype_diversity(self.windowed_dataset)
+                stat_ds = haplotype_diversity(self.windowed_dataset, ignore_missing=haplotype_ignore_missing)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat in ['garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1']:
                 # Calculate all Garud H statistics at once if any are requested
