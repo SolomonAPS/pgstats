@@ -1527,8 +1527,7 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
     
     References:
     - Walsh and Lynch (2018) Equation 9.26b (folded) and 9.26c (unfolded)
-    - Fu and Li (1993) Statistical tests of neutrality of mutations
-    
+        
     Textbook formulas (Walsh & Lynch 2018):
     
     Folded singletons (η₁, Equation 9.26b):
@@ -1541,10 +1540,7 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
     - Minor allele count = min(derived_count, n - derived_count)
     - Derived allele count = number of derived alleles in sample
     - n = sample size
-    
-    Singletons are sites where an allele appears only once in the sample.
-    They are used in Fu and Li's tests and are sensitive to population size changes.
-    
+        
     Args:
         ds: sgkit Dataset containing genotype calls
         call_genotype: Name of the genotype variable

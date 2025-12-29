@@ -114,7 +114,7 @@ def calculate_ld_d(genotypes: np.ndarray) -> float:
         for chrom_idx in range(ploidy):
             allele_A = genotypes[sample_idx, 0, chrom_idx]
             allele_B = genotypes[sample_idx, 1, chrom_idx]
-            
+        
             # Skip if either allele is missing
             if allele_A < 0 or allele_B < 0:
                 continue
@@ -258,7 +258,7 @@ def calculate_ld_r_squared(genotypes: np.ndarray) -> float:
         for chrom_idx in range(ploidy):
             allele_A = genotypes[sample_idx, 0, chrom_idx]
             allele_B = genotypes[sample_idx, 1, chrom_idx]
-            
+    
             if allele_A < 0 or allele_B < 0:
                 continue
             

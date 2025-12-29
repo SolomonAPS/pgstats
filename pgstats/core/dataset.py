@@ -1200,10 +1200,10 @@ class GenomicDataset:
                 result_ds = theta_l(self.dataset)
                 results[stat] = np.mean(result_ds['theta_l'].values)
             elif stat == 'fu_li_d':
-                result_ds = fu_li_d(self.dataset)
+                result_ds = fu_li_d(self.dataset, folded=True)
                 results[stat] = np.mean(result_ds['fu_li_d_star'].values)
             elif stat == 'fu_li_f':
-                result_ds = fu_li_f(self.dataset)
+                result_ds = fu_li_f(self.dataset, folded=True)
                 results[stat] = np.mean(result_ds['fu_li_f_star'].values)
             elif stat == 'fu_li_d_unfolded':
                 result_ds = fu_li_d_unfolded(self.dataset)
