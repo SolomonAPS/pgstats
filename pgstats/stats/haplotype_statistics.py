@@ -157,6 +157,157 @@ def filter_haplotypes_by_missingness(haplotypes: np.ndarray,
 
 
 # =============================================================================
+# PAIRWISE COMPARISON FOR MISSING DATA HANDLING
+# =============================================================================
+
+@numba.njit(nogil=True, fastmath=False)
+def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) -> bool:
+    """
+    Compare two haplotypes, returning True only if they match at all positions
+    where BOTH have non-missing data.
+    
+    This function implements pairwise comparison ignoring missing data:
+    - Positions where either haplotype has missing data (-1) are excluded
+    - Positions where both have non-missing data must match exactly
+    - Two haplotypes are considered "the same" if they match at all compared positions
+    
+    Args:
+        haplotype1: Array of shape (n_variants,) with haplotype data
+                   0 = reference allele, 1 = alternate allele, -1 = missing
+        haplotype2: Array of shape (n_variants,) with haplotype data
+                   0 = reference allele, 1 = alternate allele, -1 = missing
+    
+    Returns:
+        True if haplotypes match at all positions where both have non-missing data,
+        False otherwise
+    """
+    n_variants = haplotype1.shape[0]
+    
+    for pos in range(n_variants):
+        val1 = haplotype1[pos]
+        val2 = haplotype2[pos]
+        
+        # Skip if either is missing
+        if val1 == -1 or val2 == -1:
+            continue
+        
+        # If both are non-missing, they must match
+        if val1 != val2:
+            return False
+    
+    # All compared positions matched
+    return True
+
+
+@numba.njit(nogil=True, fastmath=False)
+def union_find_find(parent: np.ndarray, x: int) -> int:
+    """
+    Find the root of x with path compression.
+    
+    Args:
+        parent: Parent array for union-find structure
+        x: Element to find root for
+    
+    Returns:
+        Root of x
+    """
+    if parent[x] != x:
+        parent[x] = union_find_find(parent, parent[x])  # Path compression
+    return parent[x]
+
+
+@numba.njit(nogil=True, fastmath=False)
+def union_find_union(parent: np.ndarray, size: np.ndarray, x: int, y: int):
+    """
+    Union two sets using union by size.
+    
+    Args:
+        parent: Parent array for union-find structure
+        size: Size array for union by size optimization
+        x: First element
+        y: Second element
+    """
+    root_x = union_find_find(parent, x)
+    root_y = union_find_find(parent, y)
+    
+    if root_x == root_y:
+        return  # Already in same set
+    
+    # Union by size: attach smaller tree to larger tree
+    if size[root_x] < size[root_y]:
+        parent[root_x] = root_y
+        size[root_y] += size[root_x]
+    else:
+        parent[root_y] = root_x
+        size[root_x] += size[root_y]
+
+
+@numba.njit(nogil=True, fastmath=False)
+def union_find_group_haplotypes(haplotypes: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Group haplotypes using union-find based on pairwise comparison.
+    
+    Two haplotypes are grouped together if they match at all positions where
+    both have non-missing data. This handles transitive relationships correctly:
+    if A matches B and A matches C, then A, B, and C are all in the same group,
+    even if B and C don't directly match.
+    
+    This function is used when ignore_missing=True to correctly handle missing
+    data without imputation. It is slower than hashing (O(n²) comparisons) but
+    necessary for correctness.
+    
+    Args:
+        haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
+                   0 = reference allele, 1 = alternate allele, -1 = missing
+    
+    Returns:
+        Tuple of (group_ids, counts) where:
+        - group_ids: Array of shape (n_haplotypes,) with group ID for each haplotype
+        - counts: Array of shape (n_groups,) with count of haplotypes in each group
+    """
+    n_variants, n_haplotypes = haplotypes.shape
+    
+    if n_haplotypes == 0:
+        return np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+    
+    # Initialize union-find structure
+    parent = np.arange(n_haplotypes, dtype=np.int64)
+    size = np.ones(n_haplotypes, dtype=np.int64)
+    
+    # Compare all pairs of haplotypes
+    for i in range(n_haplotypes):
+        for j in range(i + 1, n_haplotypes):
+            if haplotypes_match_pairwise(haplotypes[:, i], haplotypes[:, j]):
+                union_find_union(parent, size, i, j)
+    
+    # Assign group IDs to each haplotype (compress all paths first)
+    group_ids = np.zeros(n_haplotypes, dtype=np.int64)
+    for i in range(n_haplotypes):
+        group_ids[i] = union_find_find(parent, i)
+    
+    # Map group IDs to consecutive integers starting from 0
+    unique_groups = np.unique(group_ids)
+    n_groups = len(unique_groups)
+    
+    # Create mapping array (max group_id will be < n_haplotypes)
+    max_group_id = np.max(group_ids) if n_haplotypes > 0 else 0
+    group_map = np.zeros(max_group_id + 1, dtype=np.int64)
+    for idx, group_id in enumerate(unique_groups):
+        group_map[group_id] = idx
+    
+    # Remap group IDs
+    for i in range(n_haplotypes):
+        group_ids[i] = group_map[group_ids[i]]
+    
+    # Count frequencies for each group
+    counts = np.zeros(n_groups, dtype=np.int64)
+    for i in range(n_haplotypes):
+        counts[group_ids[i]] += 1
+    
+    return group_ids, counts
+
+
+# =============================================================================
 # HAPLOTYPE STATISTICS CALCULATIONS
 # =============================================================================
 
@@ -169,11 +320,16 @@ def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool =
     H = (1 - sum(f_i^2)) * n / (n - 1)
     where f_i is the frequency of haplotype i and n is the number of haplotypes.
     
+    When ignore_missing=True, uses pairwise comparison with union-find to correctly
+    group haplotypes that match at all positions where both have non-missing data.
+    This handles transitive relationships (A matches B and A matches C, but B and C
+    don't directly match). When ignore_missing=False, uses faster hashing approach.
+    
     Args:
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
                   0 = reference allele, 1 = alternate allele, -1 = missing
-        ignore_missing: If True, ignore missing data (-1) in hashing
-                        If False, include missing data in hash (default sgkit behavior)
+        ignore_missing: If True, use pairwise comparison ignoring missing data
+                       If False, include missing data in hash (default sgkit behavior)
     
     Returns:
         Haplotype diversity value
@@ -184,11 +340,15 @@ def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool =
     if n_variants == 0 or n_haplotypes < 2:
         return np.nan
     
-    # Hash all haplotypes to identify unique haplotypes
-    hash_values = hash_haplotypes(haplotypes, ignore_missing)
-    
-    # Count haplotype frequencies
-    unique_hashes, counts = count_unique_values(hash_values)
+    # Use pairwise comparison when ignore_missing=True, hashing otherwise
+    if ignore_missing:
+        # Pairwise comparison with union-find (slower but correct for missing data)
+        group_ids, counts = union_find_group_haplotypes(haplotypes)
+    else:
+        # Hash all haplotypes to identify unique haplotypes (faster)
+        hash_values = hash_haplotypes(haplotypes, ignore_missing)
+        # Count haplotype frequencies
+        unique_hashes, counts = count_unique_values(hash_values)
     
     # Protect against division by zero
     if n_haplotypes == 0 or len(counts) == 0:
@@ -240,7 +400,12 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
                                max_missing: float = 1.0,
                                missing_is_percentage: bool = True) -> np.ndarray:
     """
-    Calculate Garud H1, H12, H123, and H2/H1 statistics using sgkit's hashing approach.
+    Calculate Garud H1, H12, H123, and H2/H1 statistics.
+    
+    When ignore_missing=True, uses pairwise comparison with union-find to correctly
+    group haplotypes that match at all positions where both have non-missing data.
+    This handles transitive relationships (A matches B and A matches C, but B and C
+    don't directly match). When ignore_missing=False, uses faster hashing approach.
     
     References:
     - Walsh and Lynch (2018) Equation 9.10-9.13
@@ -248,7 +413,7 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
     
     Args:
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
-        ignore_missing: If True, ignore missing data (-1) in hashing
+        ignore_missing: If True, use pairwise comparison ignoring missing data
                        If False, include missing data in hash (default sgkit behavior)
         max_missing: Maximum allowed missing data (percentage 0-1 or absolute count)
                     Default: 1.0 (100% missing data allowed - no filtering)
@@ -273,11 +438,15 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
     if n_valid_haplotypes < 2:
         return np.array([np.nan, np.nan, np.nan, np.nan])
     
-    # Hash all haplotypes to create unique identifiers
-    hash_values = hash_haplotypes(valid_haplotypes, ignore_missing)
-    
-    # Count haplotype frequencies
-    unique_hashes, counts = count_unique_values(hash_values)
+    # Use pairwise comparison when ignore_missing=True, hashing otherwise
+    if ignore_missing:
+        # Pairwise comparison with union-find (slower but correct for missing data)
+        group_ids, counts = union_find_group_haplotypes(valid_haplotypes)
+    else:
+        # Hash all haplotypes to create unique identifiers (faster)
+        hash_values = hash_haplotypes(valid_haplotypes, ignore_missing)
+        # Count haplotype frequencies
+        unique_hashes, counts = count_unique_values(hash_values)
     
     # Protect against division by zero
     if n_valid_haplotypes == 0 or len(counts) == 0:
