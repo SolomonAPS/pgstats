@@ -268,7 +268,7 @@ def union_find_group_haplotypes(haplotypes: np.ndarray) -> Tuple[np.ndarray, np.
     n_variants, n_haplotypes = haplotypes.shape
     
     if n_haplotypes == 0:
-        return np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
     
     # Initialize union-find structure
     parent = np.arange(n_haplotypes, dtype=np.int64)
