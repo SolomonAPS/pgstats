@@ -170,6 +170,8 @@ def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) ->
     - Positions where either haplotype has missing data (-1) are excluded
     - Positions where both have non-missing data must match exactly
     - Two haplotypes are considered "the same" if they match at all compared positions
+    - If there are no positions where both have non-missing data, returns False
+      (cannot determine if they match, so treat as different)
     
     Args:
         haplotype1: Array of shape (n_variants,) with haplotype data
@@ -179,9 +181,10 @@ def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) ->
     
     Returns:
         True if haplotypes match at all positions where both have non-missing data,
-        False otherwise
+        False otherwise (including case where no positions can be compared)
     """
     n_variants = haplotype1.shape[0]
+    n_compared = 0
     
     for pos in range(n_variants):
         val1 = haplotype1[pos]
@@ -192,8 +195,13 @@ def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) ->
             continue
         
         # If both are non-missing, they must match
+        n_compared += 1
         if val1 != val2:
             return False
+    
+    # If no positions were compared, return False (cannot determine match)
+    if n_compared == 0:
+        return False
     
     # All compared positions matched
     return True
@@ -202,7 +210,7 @@ def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) ->
 @numba.njit(nogil=True, fastmath=False)
 def union_find_find(parent: np.ndarray, x: int) -> int:
     """
-    Find the root of x with path compression.
+    Find the root of x (iterative version for Numba compatibility).
     
     Args:
         parent: Parent array for union-find structure
@@ -211,9 +219,11 @@ def union_find_find(parent: np.ndarray, x: int) -> int:
     Returns:
         Root of x
     """
-    if parent[x] != x:
-        parent[x] = union_find_find(parent, parent[x])  # Path compression
-    return parent[x]
+    # Find root iteratively (simple version without path compression to avoid issues)
+    root = x
+    while parent[root] != root:
+        root = parent[root]
+    return root
 
 
 @numba.njit(nogil=True, fastmath=False)
