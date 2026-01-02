@@ -584,9 +584,9 @@ def haplotype_diversity(ds: xr.Dataset,
         top3_freq_false = frequencies_false_sorted[:3] if len(frequencies_false_sorted) >= 3 else list(frequencies_false_sorted) + [0.0] * (3 - len(frequencies_false_sorted))
         
         # With ignore_missing=True
-        hash_values_true = hash_haplotypes(window_haplotypes, True)
-        unique_hashes_true, counts_true = count_unique_values(hash_values_true)
-        n_unique_true = len(unique_hashes_true)
+        # Use union-find for grouping (same as in calculate_haplotype_diversity)
+        group_ids_true, counts_true = union_find_group_haplotypes(window_haplotypes)
+        n_unique_true = len(counts_true)
         n_singletons_true = np.sum(counts_true == 1)
         frequencies_true = counts_true.astype(np.float64) / n_haplotypes_win
         sum_freq_sq_true = np.sum(frequencies_true ** 2)
@@ -733,11 +733,11 @@ def garud_h_statistics(ds: xr.Dataset,
         valid_haplotypes_true = window_haplotypes[:, valid_mask_true]
         n_valid_true = np.sum(valid_mask_true)
         if n_valid_true >= 2:
-            hash_values_true = hash_haplotypes(valid_haplotypes_true, True)
-            unique_hashes_true, counts_true = count_unique_values(hash_values_true)
-            n_unique_true = len(unique_hashes_true)
+            # Use union-find for grouping (same as in calculate_garud_h_statistics)
+            group_ids_true, counts_true = union_find_group_haplotypes(valid_haplotypes_true)
+            n_unique_true = len(counts_true)
             n_singletons_true = np.sum(counts_true == 1)
-            frequencies_true = counts_true / n_valid_true
+            frequencies_true = counts_true.astype(np.float64) / n_valid_true
             frequencies_true_sorted = np.sort(frequencies_true)[::-1]
             stats_true = calculate_garud_h_statistics(window_haplotypes, True, max_missing, missing_is_percentage)
             top3_freq_true = frequencies_true_sorted[:3] if len(frequencies_true_sorted) >= 3 else list(frequencies_true_sorted) + [0.0] * (3 - len(frequencies_true_sorted))
