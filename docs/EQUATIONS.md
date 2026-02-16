@@ -398,7 +398,7 @@ $$\frac{H_2}{H_1} = \frac{\sum_{i=2}^{k} p_i^2}{\sum_{i=1}^{k} p_i^2}$$
 All statistics properly handle missing data:
 
 1. **Per-site sample sizes**: Theta estimators use the actual number of non-missing samples at each site
-2. **Variance calculations**: Use the maximum sample size across variants for neutrality test variances (following sgkit and scikit-allel conventions)
+2. **Variance calculations**: Use the maximum sample size across variants for neutrality test variances 
 
 ### Callable Sites
 
