@@ -242,6 +242,12 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         help='Ignore missing data when hashing haplotypes for Garud statistics. If True, haplotypes that match at all non-missing positions are grouped together. If False (default), missing data is included in the hash.'
     )
     filter_group.add_argument(
+        '--haplotype-min-sites',
+        type=int,
+        default=1,
+        help='Minimum number of non-missing overlapping sites required for two haplotypes to be considered matching when using --haplotype-ignore-missing. Default is 1. Higher values (e.g., 3-5) prevent spurious grouping of haplotypes with little overlap and reduce bridge events.'
+    )
+    filter_group.add_argument(
         '--keep-zarr',
         action='store_true',
         help='Keep intermediate Zarr files for faster re-runs. Files saved next to output file by default.'
@@ -523,7 +529,8 @@ def run_stats_command(args):
                 min_variants=args.min_variants,
                 use_callable_sites=True,
                 use_fixed_n=args.fixed_sample_size,
-                haplotype_ignore_missing=args.haplotype_ignore_missing
+                haplotype_ignore_missing=args.haplotype_ignore_missing,
+                haplotype_min_sites=args.haplotype_min_sites
             )
             
             print(f"  Calculated statistics for {len(results_df)} total windows")
@@ -553,7 +560,8 @@ def run_stats_command(args):
                 stats=stats_to_calculate,
                 use_callable_sites=True,
                 use_fixed_n=args.fixed_sample_size,
-                haplotype_ignore_missing=args.haplotype_ignore_missing
+                haplotype_ignore_missing=args.haplotype_ignore_missing,
+                haplotype_min_sites=args.haplotype_min_sites
             )
             print(f"  Calculated statistics for {len(window_stats.windows)} windows")
             

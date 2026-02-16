@@ -13,7 +13,8 @@ References:
 import numpy as np
 import numba
 import xarray as xr
-from typing import Tuple
+import warnings
+from typing import Tuple, List
 
 
 # =============================================================================
@@ -161,7 +162,8 @@ def filter_haplotypes_by_missingness(haplotypes: np.ndarray,
 # =============================================================================
 
 @numba.njit(nogil=True, fastmath=False)
-def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) -> bool:
+def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray, 
+                               min_sites_compared: int = 1) -> bool:
     """
     Compare two haplotypes, returning True only if they match at all positions
     where BOTH have non-missing data.
@@ -172,16 +174,23 @@ def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) ->
     - Two haplotypes are considered "the same" if they match at all compared positions
     - If there are no positions where both have non-missing data, returns False
       (cannot determine if they match, so treat as different)
+    - If the number of compared sites is less than min_sites_compared, returns False
+      (insufficient overlap to confidently call them the same)
     
     Args:
         haplotype1: Array of shape (n_variants,) with haplotype data
                    0 = reference allele, 1 = alternate allele, -1 = missing
         haplotype2: Array of shape (n_variants,) with haplotype data
                    0 = reference allele, 1 = alternate allele, -1 = missing
+        min_sites_compared: Minimum number of sites that must be compared
+                          (both non-missing) for a match to be considered valid.
+                          Default is 1. Higher values prevent spurious matches
+                          between haplotypes with little overlap.
     
     Returns:
-        True if haplotypes match at all positions where both have non-missing data,
-        False otherwise (including case where no positions can be compared)
+        True if haplotypes match at all positions where both have non-missing data
+        AND at least min_sites_compared positions were compared,
+        False otherwise (including case where insufficient positions can be compared)
     """
     n_variants = haplotype1.shape[0]
     n_compared = 0
@@ -199,11 +208,11 @@ def haplotypes_match_pairwise(haplotype1: np.ndarray, haplotype2: np.ndarray) ->
         if val1 != val2:
             return False
     
-    # If no positions were compared, return False (cannot determine match)
-    if n_compared == 0:
+    # Check if we compared enough sites
+    if n_compared < min_sites_compared:
         return False
     
-    # All compared positions matched
+    # All compared positions matched and we had sufficient overlap
     return True
 
 
@@ -253,7 +262,8 @@ def union_find_union(parent: np.ndarray, size: np.ndarray, x: int, y: int):
 
 
 @numba.njit(nogil=True, fastmath=False)
-def union_find_group_haplotypes(haplotypes: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def union_find_group_haplotypes(haplotypes: np.ndarray, 
+                                min_sites_compared: int = 1) -> Tuple[np.ndarray, np.ndarray]:
     """
     Group haplotypes using union-find based on pairwise comparison.
     
@@ -269,6 +279,10 @@ def union_find_group_haplotypes(haplotypes: np.ndarray) -> Tuple[np.ndarray, np.
     Args:
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
                    0 = reference allele, 1 = alternate allele, -1 = missing
+        min_sites_compared: Minimum number of sites that must be compared
+                          (both non-missing) for two haplotypes to be grouped together.
+                          Default is 1. Higher values prevent spurious grouping of
+                          haplotypes with little overlap.
     
     Returns:
         Tuple of (group_ids, counts) where:
@@ -287,7 +301,8 @@ def union_find_group_haplotypes(haplotypes: np.ndarray) -> Tuple[np.ndarray, np.
     # Compare all pairs of haplotypes
     for i in range(n_haplotypes):
         for j in range(i + 1, n_haplotypes):
-            if haplotypes_match_pairwise(haplotypes[:, i], haplotypes[:, j]):
+            if haplotypes_match_pairwise(haplotypes[:, i], haplotypes[:, j], 
+                                        min_sites_compared):
                 union_find_union(parent, size, i, j)
     
     # Assign group IDs to each haplotype (compress all paths first)
@@ -317,12 +332,83 @@ def union_find_group_haplotypes(haplotypes: np.ndarray) -> Tuple[np.ndarray, np.
     return group_ids, counts
 
 
+def detect_bridge_events(haplotypes: np.ndarray, group_ids: np.ndarray, 
+                         min_sites_compared: int = 1) -> Tuple[int, List[Tuple[int, int, int]]]:
+    """
+    Detect bridge events: cases where two haplotypes are in the same group but 
+    don't directly match each other (they were bridged by a third haplotype).
+    
+    This function checks each group with more than one haplotype to see if all
+    members directly match each other. If two members A and B are in the same
+    group but don't directly match, it indicates they were bridged by some other
+    haplotype C where A matches C and C matches B.
+    
+    Args:
+        haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
+        group_ids: Array of shape (n_haplotypes,) with group ID for each haplotype
+        min_sites_compared: Minimum number of sites for a valid match (same as used
+                          in grouping)
+    
+    Returns:
+        Tuple of (n_events, event_list) where:
+        - n_events: Total number of bridge events detected (pairs that don't match)
+        - event_list: List of tuples (group_id, hap_i, hap_j) for each non-matching pair
+    """
+    n_variants, n_haplotypes = haplotypes.shape
+    
+    if n_haplotypes == 0:
+        return 0, []
+    
+    # Get unique groups and their members
+    unique_groups = np.unique(group_ids)
+    events = []
+    
+    for group_id in unique_groups:
+        # Find all haplotypes in this group
+        members = np.where(group_ids == group_id)[0]
+        
+        # Only check groups with more than one member
+        if len(members) <= 1:
+            continue
+        
+        # Check all pairs within this group
+        for i in range(len(members)):
+            for j in range(i + 1, len(members)):
+                hap_i = members[i]
+                hap_j = members[j]
+                
+                # Check if these two haplotypes directly match
+                # We need to convert the Numba function call to work in regular Python
+                n_compared = 0
+                mismatch = False
+                
+                for pos in range(n_variants):
+                    val1 = haplotypes[pos, hap_i]
+                    val2 = haplotypes[pos, hap_j]
+                    
+                    if val1 == -1 or val2 == -1:
+                        continue
+                    
+                    n_compared += 1
+                    if val1 != val2:
+                        mismatch = True
+                        break
+                
+                # If they don't directly match (either mismatch or insufficient overlap)
+                # but are in the same group, this is a bridge event
+                if mismatch or n_compared < min_sites_compared:
+                    events.append((int(group_id), int(hap_i), int(hap_j)))
+    
+    return len(events), events
+
+
 # =============================================================================
 # HAPLOTYPE STATISTICS CALCULATIONS
 # =============================================================================
 
 @numba.njit(nogil=True, fastmath=False)
-def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool = False) -> float:
+def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool = False, 
+                                  min_sites_compared: int = 1) -> float:
     """
     Calculate haplotype diversity (H) - the probability that two randomly
     chosen haplotypes are different.
@@ -339,7 +425,10 @@ def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool =
         haplotypes: Array of shape (n_variants, n_haplotypes) with haplotype data
                   0 = reference allele, 1 = alternate allele, -1 = missing
         ignore_missing: If True, use pairwise comparison ignoring missing data
-                       If False, include missing data in hash (default sgkit behavior)
+                        If False, include missing data in hash (default sgkit behavior)
+        min_sites_compared: Minimum number of non-missing overlapping sites required
+                          for two haplotypes to be considered matching (only used when
+                          ignore_missing=True). Default is 1.
     
     Returns:
         Haplotype diversity value
@@ -353,7 +442,7 @@ def calculate_haplotype_diversity(haplotypes: np.ndarray, ignore_missing: bool =
     # Use pairwise comparison when ignore_missing=True, hashing otherwise
     if ignore_missing:
         # Pairwise comparison with union-find (slower but correct for missing data)
-        group_ids, counts = union_find_group_haplotypes(haplotypes)
+        group_ids, counts = union_find_group_haplotypes(haplotypes, min_sites_compared)
     else:
         # Hash all haplotypes to identify unique haplotypes (faster)
         hash_values = hash_haplotypes(haplotypes, ignore_missing)
@@ -408,7 +497,8 @@ def count_unique_values(values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 def calculate_garud_h_statistics(haplotypes: np.ndarray,
                                ignore_missing: bool = False,
                                max_missing: float = 1.0,
-                               missing_is_percentage: bool = True) -> np.ndarray:
+                               missing_is_percentage: bool = True,
+                               min_sites_compared: int = 1) -> np.ndarray:
     """
     Calculate Garud H1, H12, H123, and H2/H1 statistics.
     
@@ -430,6 +520,9 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
         missing_is_percentage: If True, max_missing is percentage (0-1), 
                               if False, max_missing is absolute count
                               Default: True
+        min_sites_compared: Minimum number of non-missing overlapping sites required
+                          for two haplotypes to be considered matching (only used when
+                          ignore_missing=True). Default is 1.
     
     Returns:
         Array of [H1, H12, H123, H2/H1] values
@@ -451,7 +544,7 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
     # Use pairwise comparison when ignore_missing=True, hashing otherwise
     if ignore_missing:
         # Pairwise comparison with union-find (slower but correct for missing data)
-        group_ids, counts = union_find_group_haplotypes(valid_haplotypes)
+        group_ids, counts = union_find_group_haplotypes(valid_haplotypes, min_sites_compared)
     else:
         # Hash all haplotypes to create unique identifiers (faster)
         hash_values = hash_haplotypes(valid_haplotypes, ignore_missing)
@@ -495,7 +588,8 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
 
 def haplotype_diversity(ds: xr.Dataset, 
                        call_genotype: str = "call_genotype",
-                       ignore_missing: bool = False) -> xr.Dataset:
+                       ignore_missing: bool = False,
+                       min_sites_compared: int = 1) -> xr.Dataset:
     """
     Calculate haplotype diversity for each window using Nei's gene diversity formula.
     
@@ -511,6 +605,9 @@ def haplotype_diversity(ds: xr.Dataset,
         call_genotype: Name of the genotype variable
         ignore_missing: If True, ignore missing data (-1) in hashing
                         If False, include missing data in hash (default sgkit behavior)
+        min_sites_compared: Minimum number of non-missing overlapping sites required
+                          for two haplotypes to be considered matching (only used when
+                          ignore_missing=True). Default is 1.
         
     Returns:
         Dataset with haplotype diversity values
@@ -556,7 +653,8 @@ def haplotype_diversity(ds: xr.Dataset,
         window_start = window_starts[w_idx]
         window_stop = window_stops[w_idx]
         window_haplotypes = haplotypes[window_start:window_stop, :]
-        diversity_values[w_idx] = calculate_haplotype_diversity(window_haplotypes, ignore_missing)
+        diversity_values[w_idx] = calculate_haplotype_diversity(window_haplotypes, ignore_missing, 
+                                                                 min_sites_compared)
         
         # Calculate debug info
         n_variants_win = window_haplotypes.shape[0]
@@ -585,9 +683,22 @@ def haplotype_diversity(ds: xr.Dataset,
         
         # With ignore_missing=True
         # Use union-find for grouping (same as in calculate_haplotype_diversity)
-        group_ids_true, counts_true = union_find_group_haplotypes(window_haplotypes)
+        group_ids_true, counts_true = union_find_group_haplotypes(window_haplotypes, min_sites_compared)
         n_unique_true = len(counts_true)
         n_singletons_true = np.sum(counts_true == 1)
+        
+        # Detect bridge events (only when using ignore_missing)
+        if ignore_missing and n_haplotypes_win > 1:
+            n_bridge_events, bridge_event_list = detect_bridge_events(window_haplotypes, group_ids_true, 
+                                                                       min_sites_compared)
+            if n_bridge_events > 0:
+                warnings.warn(
+                    f"Window {w_idx}: Detected {n_bridge_events} bridge event(s) where haplotypes "
+                    f"are grouped together but don't directly match. This indicates transitive grouping "
+                    f"via intermediate 'bridge' haplotypes. Consider increasing --haplotype-min-sites "
+                    f"(currently {min_sites_compared}) to require more overlap for grouping.",
+                    UserWarning
+                )
         frequencies_true = counts_true.astype(np.float64) / n_haplotypes_win
         sum_freq_sq_true = np.sum(frequencies_true ** 2)
         diversity_true = calculate_haplotype_diversity(window_haplotypes, True)
@@ -621,7 +732,8 @@ def garud_h_statistics(ds: xr.Dataset,
                       call_genotype: str = "call_genotype",
                       ignore_missing: bool = False,
                       max_missing: float = 1.0,
-                      missing_is_percentage: bool = True) -> xr.Dataset:
+                      missing_is_percentage: bool = True,
+                      min_sites_compared: int = 1) -> xr.Dataset:
     """
     Calculate Garud H1, H12, H123, and H2/H1 statistics using sgkit's hashing approach.
     
@@ -639,6 +751,9 @@ def garud_h_statistics(ds: xr.Dataset,
         missing_is_percentage: If True, max_missing is percentage (0-1), 
                               if False, max_missing is absolute count
                               Default: True
+        min_sites_compared: Minimum number of non-missing overlapping sites required
+                          for two haplotypes to be considered matching (only used when
+                          ignore_missing=True). Default is 1.
         
     Returns:
         Dataset with Garud H statistics
@@ -689,7 +804,8 @@ def garud_h_statistics(ds: xr.Dataset,
         window_stop = window_stops[w_idx]
         window_haplotypes = haplotypes[window_start:window_stop, :]
         stats = calculate_garud_h_statistics(window_haplotypes, 
-                                           ignore_missing, max_missing, missing_is_percentage)
+                                           ignore_missing, max_missing, missing_is_percentage,
+                                           min_sites_compared)
         h1_values[w_idx] = stats[0]
         h12_values[w_idx] = stats[1]
         h123_values[w_idx] = stats[2]
@@ -734,13 +850,28 @@ def garud_h_statistics(ds: xr.Dataset,
         n_valid_true = np.sum(valid_mask_true)
         if n_valid_true >= 2:
             # Use union-find for grouping (same as in calculate_garud_h_statistics)
-            group_ids_true, counts_true = union_find_group_haplotypes(valid_haplotypes_true)
+            group_ids_true, counts_true = union_find_group_haplotypes(valid_haplotypes_true, min_sites_compared)
             n_unique_true = len(counts_true)
             n_singletons_true = np.sum(counts_true == 1)
             frequencies_true = counts_true.astype(np.float64) / n_valid_true
             frequencies_true_sorted = np.sort(frequencies_true)[::-1]
-            stats_true = calculate_garud_h_statistics(window_haplotypes, True, max_missing, missing_is_percentage)
+            stats_true = calculate_garud_h_statistics(window_haplotypes, True, max_missing, 
+                                                      missing_is_percentage, min_sites_compared)
             top3_freq_true = frequencies_true_sorted[:3] if len(frequencies_true_sorted) >= 3 else list(frequencies_true_sorted) + [0.0] * (3 - len(frequencies_true_sorted))
+            
+            # Detect bridge events (only when using ignore_missing)
+            if ignore_missing:
+                n_bridge_events, bridge_event_list = detect_bridge_events(valid_haplotypes_true, 
+                                                                          group_ids_true, 
+                                                                          min_sites_compared)
+                if n_bridge_events > 0:
+                    warnings.warn(
+                        f"Window {w_idx}: Detected {n_bridge_events} bridge event(s) where haplotypes "
+                        f"are grouped together but don't directly match. This indicates transitive grouping "
+                        f"via intermediate 'bridge' haplotypes. Consider increasing --haplotype-min-sites "
+                        f"(currently {min_sites_compared}) to require more overlap for grouping.",
+                        UserWarning
+                    )
         else:
             n_unique_true = 0
             n_singletons_true = 0

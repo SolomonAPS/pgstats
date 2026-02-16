@@ -904,7 +904,8 @@ class GenomicDataset:
                                stats: List[str] = None,
                                use_callable_sites: bool = True,
                                use_fixed_n: bool = False,
-                               haplotype_ignore_missing: bool = False) -> xr.Dataset:
+                               haplotype_ignore_missing: bool = False,
+                               haplotype_min_sites: int = 1) -> xr.Dataset:
         """
         Calculate statistics for each window using sgkit's windowed dataset.
         
@@ -915,6 +916,9 @@ class GenomicDataset:
             haplotype_ignore_missing: If True, ignore missing data when hashing haplotypes
                                      for Garud statistics. If False (default), missing data
                                      is included in the hash.
+            haplotype_min_sites: Minimum number of non-missing overlapping sites required
+                               for two haplotypes to be considered matching when using
+                               haplotype_ignore_missing. Default is 1.
             
         Returns:
             Dataset with windowed statistics
@@ -1065,14 +1069,17 @@ class GenomicDataset:
                     elapsed = time.time() - stat_start
                     print(f"[Timing] {stat}: {elapsed:.2f}s", flush=True)
             elif stat == 'haplotype_diversity':
-                stat_ds = haplotype_diversity(self.windowed_dataset, ignore_missing=haplotype_ignore_missing)
+                stat_ds = haplotype_diversity(self.windowed_dataset, 
+                                             ignore_missing=haplotype_ignore_missing,
+                                             min_sites_compared=haplotype_min_sites)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat in ['garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1']:
                 # Calculate all Garud H statistics at once if any are requested
                 if not hasattr(self, '_cached_garud_stats'):
                     self._cached_garud_stats = garud_h_statistics(
                         self.windowed_dataset,
-                        ignore_missing=haplotype_ignore_missing
+                        ignore_missing=haplotype_ignore_missing,
+                        min_sites_compared=haplotype_min_sites
                     )
                 
                 # Extract the requested statistic
@@ -1798,7 +1805,8 @@ class GenomicDataset:
                                     min_variants: int = 1,
                                     use_callable_sites: bool = True,
                                     use_fixed_n: bool = False,
-                                    haplotype_ignore_missing: bool = False) -> pd.DataFrame:
+                                    haplotype_ignore_missing: bool = False,
+                                    haplotype_min_sites: int = 1) -> pd.DataFrame:
         """
         Calculate statistics for multiple genomic regions.
         
@@ -1819,6 +1827,9 @@ class GenomicDataset:
             haplotype_ignore_missing: If True, ignore missing data when hashing haplotypes
                                      for Garud statistics. If False (default), missing data
                                      is included in the hash.
+            haplotype_min_sites: Minimum number of non-missing overlapping sites required
+                               for two haplotypes to be considered matching when using
+                               haplotype_ignore_missing. Default is 1.
             
         Returns:
             DataFrame with columns:
@@ -1915,7 +1926,8 @@ class GenomicDataset:
                     stats=stats,
                     use_callable_sites=use_callable_sites,
                     use_fixed_n=use_fixed_n,
-                    haplotype_ignore_missing=haplotype_ignore_missing
+                    haplotype_ignore_missing=haplotype_ignore_missing,
+                    haplotype_min_sites=haplotype_min_sites
                 )
                 
                 # Convert to DataFrame - only extract window-related variables
