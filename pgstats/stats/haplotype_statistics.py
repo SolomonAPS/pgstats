@@ -615,6 +615,9 @@ def haplotype_diversity(ds: xr.Dataset,
     genotypes = ds[call_genotype].values
     n_variants, n_samples, ploidy = genotypes.shape
     
+    # DEBUG: Print parameter values
+    print(f"[DEBUG haplotype_diversity] ignore_missing={ignore_missing}, min_sites_compared={min_sites_compared}")
+    
     # Estimate haplotypes assuming phased data (sgkit approach)
     haplotypes = estimate_haplotypes_from_phased_data(genotypes)
     
@@ -701,7 +704,7 @@ def haplotype_diversity(ds: xr.Dataset,
                 )
         frequencies_true = counts_true.astype(np.float64) / n_haplotypes_win
         sum_freq_sq_true = np.sum(frequencies_true ** 2)
-        diversity_true = calculate_haplotype_diversity(window_haplotypes, True)
+        diversity_true = calculate_haplotype_diversity(window_haplotypes, True, min_sites_compared)
         frequencies_true_sorted = np.sort(frequencies_true)[::-1]
         top3_freq_true = frequencies_true_sorted[:3] if len(frequencies_true_sorted) >= 3 else list(frequencies_true_sorted) + [0.0] * (3 - len(frequencies_true_sorted))
         
@@ -760,6 +763,9 @@ def garud_h_statistics(ds: xr.Dataset,
     """
     genotypes = ds[call_genotype].values
     n_variants, n_samples, ploidy = genotypes.shape
+    
+    # DEBUG: Print parameter values
+    print(f"[DEBUG garud_h_statistics] ignore_missing={ignore_missing}, min_sites_compared={min_sites_compared}")
     
     # Estimate haplotypes assuming phased data (sgkit approach)
     haplotypes = estimate_haplotypes_from_phased_data(genotypes)
