@@ -691,7 +691,6 @@ def haplotype_diversity(ds: xr.Dataset,
         if ignore_missing and n_haplotypes_win > 1:
             n_bridge_events, bridge_event_list = detect_bridge_events(window_haplotypes, group_ids_true, 
                                                                        min_sites_compared)
-            print(f"[DEBUG] Window {w_idx}: {n_bridge_events} bridge events detected (groups: {len(counts_true)})")
             if n_bridge_events > 0:
                 warnings.warn(
                     f"Window {w_idx}: Detected {n_bridge_events} bridge event(s) where haplotypes "
@@ -865,7 +864,6 @@ def garud_h_statistics(ds: xr.Dataset,
                 n_bridge_events, bridge_event_list = detect_bridge_events(valid_haplotypes_true, 
                                                                           group_ids_true, 
                                                                           min_sites_compared)
-                print(f"[DEBUG GARUD] Window {w_idx}: {n_bridge_events} bridge events detected (groups: {len(counts_true)})")
                 if n_bridge_events > 0:
                     warnings.warn(
                         f"Window {w_idx}: Detected {n_bridge_events} bridge event(s) where haplotypes "
