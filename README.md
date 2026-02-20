@@ -26,8 +26,6 @@ pip install -e .
 pgstats --version
 ```
 
-**Note**: Some dependencies like `pyranges` are best installed via conda rather than pip.
-
 ## Quick Start
 
 ### Command-Line Interface
