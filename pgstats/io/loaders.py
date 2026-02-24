@@ -8,7 +8,7 @@ import numpy as np
 import sgkit as sg
 import xarray as xr
 import bio2zarr.vcf as v2z
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List
 from pathlib import Path
 import hashlib
 import time
@@ -19,64 +19,6 @@ try:
     ALLEL_AVAILABLE = True
 except ImportError:
     ALLEL_AVAILABLE = False
-
-
-def _open_zarr_dataset(
-    store_path: str,
-    chunks: Optional[Union[str, Dict[str, int], None]] = None,
-    consolidated: Optional[bool] = None,
-    group: Optional[str] = None,
-    **kwargs,
-) -> xr.Dataset:
-    """
-    Robustly open a Zarr store as an xarray Dataset.
-    
-    This helper centralizes Zarr opening logic and handles common pitfalls:
-    - Directory store vs. nested group (via the ``group`` argument)
-    - Consolidated vs. non-consolidated metadata
-    
-    Args:
-        store_path: Path to the Zarr store (directory, ``.zarr`` or ``.vcz``).
-        chunks: Chunking passed to ``xarray.open_zarr`` (None = load eagerly).
-        consolidated: If set, force consolidated/non-consolidated metadata.
-                      If None, try consolidated first then fall back.
-        group: Optional group name inside the store.
-        **kwargs: Forwarded to ``xarray.open_zarr``.
-    
-    Returns:
-        Opened xarray Dataset.
-    
-    Raises:
-        RuntimeError: If the store cannot be opened in any supported mode.
-    """
-    open_kwargs = dict(chunks=chunks, group=group, **kwargs)
-    
-    # If the caller explicitly requested a consolidated mode, try only that
-    if consolidated is not None:
-        try:
-            return xr.open_zarr(store_path, consolidated=consolidated, **open_kwargs)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to open Zarr store at {store_path!r} with "
-                f"consolidated={consolidated}: {e}"
-            )
-    
-    # Auto-detect: try consolidated metadata first (fast path), then fallback
-    errors = []
-    for consolidated_flag in (True, False):
-        try:
-            return xr.open_zarr(store_path, consolidated=consolidated_flag, **open_kwargs)
-        except Exception as e:
-            errors.append(f"consolidated={consolidated_flag}: {e}")
-    
-    # If we get here, both attempts failed – surface a helpful error
-    error_msg = (
-        f"Could not open Zarr store at {store_path!r}.\n"
-        f"Tried both consolidated and non-consolidated metadata with "
-        f"xarray.open_zarr.\n"
-        f"Errors:\n  " + "\n  ".join(errors)
-    )
-    raise RuntimeError(error_msg)
 
 
 def _get_vcf_hash(vcf_paths: List[str]) -> str:
@@ -207,7 +149,7 @@ def load_vcf(vcf_path: Union[str, List[str]],
         print(f"Reusing existing Zarr file: {zarr_path}", flush=True)
         print(f"Loading Zarr dataset...", flush=True)
         # Load without chunking to avoid dask corruption
-        dataset = _open_zarr_dataset(str(zarr_path), chunks=None, **kwargs)
+        dataset = sg.load_dataset(str(zarr_path), chunks=None, **kwargs)
         
         # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
         if 'variant_contig' in dataset.data_vars:
@@ -262,11 +204,11 @@ def load_vcf(vcf_path: Union[str, List[str]],
         # Save metadata for future cache validation
         _save_zarr_metadata(zarr_path, vcf_paths)
         
-        # Load Zarr dataset
+        # Load Zarr dataset with sgkit
         # CRITICAL: Load without chunking to avoid dask corruption issues
         # For small-medium datasets, loading into memory is more reliable than lazy dask evaluation
         print(f"Loading Zarr dataset...", flush=True)
-        dataset = _open_zarr_dataset(str(zarr_path), chunks=None, **kwargs)
+        dataset = sg.load_dataset(str(zarr_path), chunks=None, **kwargs)
         
         positions = dataset.variant_position.values
         
@@ -367,19 +309,16 @@ def load_vcf_simple(vcf_path: Union[str, List[str]], keep_zarr: bool = False, te
 
 def load_zarr(zarr_path: str, **kwargs) -> xr.Dataset:
     """
-    Load Zarr dataset using a robust xarray-based opener.
+    Load Zarr dataset using sgkit.
     
     Args:
-        zarr_path: Path to Zarr dataset (directory, ``.zarr`` or ``.vcz``)
-        **kwargs: Additional arguments passed to the underlying opener
+        zarr_path: Path to Zarr dataset
+        **kwargs: Additional arguments passed to sgkit
         
     Returns:
-        sgkit-compatible Dataset
+        sgkit Dataset
     """
-    # Use a robust opener so we handle:
-    # - directory vs. group stores
-    # - consolidated vs. non-consolidated metadata
-    dataset = _open_zarr_dataset(zarr_path, **kwargs)
+    dataset = sg.load_dataset(zarr_path, **kwargs)
     
     # BUGFIX: Cast variant_contig to int16 to prevent int8 overflow
     if 'variant_contig' in dataset.data_vars:
@@ -422,7 +361,7 @@ def load_dataset(data_path: str,
     """
     if format is None:
         # Infer format from file extension
-        if data_path.endswith('.zarr') or data_path.endswith('.vcz'):
+        if data_path.endswith('.zarr'):
             format = 'zarr'
         elif data_path.endswith('.bed'):
             format = 'plink'

@@ -18,7 +18,7 @@ import sgkit as sg
 import time
 from functools import wraps
 
-from pgstats.io.loaders import load_vcf_simple, load_dataset as load_genetic_dataset
+from pgstats.io.loaders import load_vcf_simple
 from pgstats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
     theta_pi, theta_w, theta_h, theta_l, fay_wu_h, singletons
@@ -118,16 +118,15 @@ class GenomicDataset:
             start = time.time()
         
         if isinstance(data_source, str):
-            # Delegate all I/O format handling (VCF vs. Zarr) to the loaders module
-            # so we get consistent behaviour and robust Zarr handling everywhere.
-            self.dataset = load_genetic_dataset(
-                str(data_source),
-                keep_zarr=keep_zarr,
-                temp_dir=zarr_dir,
-                output_dir=output_dir,
-            )
+            data_path = Path(data_source)
+            if data_path.suffix in ['.zarr', '.vcz'] or 'zarr' in str(data_path):
+                # Load Zarr dataset
+                import sgkit as sg
+                self.dataset = sg.load_dataset(data_source)
+            else:
+                # Load VCF
+                self.dataset = load_vcf_simple(data_source, keep_zarr=keep_zarr, temp_dir=zarr_dir, output_dir=output_dir)
         else:
-            # Already an in-memory xarray/sgkit Dataset
             self.dataset = data_source
         
         if self.enable_profiling:
@@ -1174,16 +1173,6 @@ class GenomicDataset:
         Returns:
             Dictionary with genome-wide statistics
         """
-        # Many stats implementations in pgstats expect a windowed sgkit dataset
-        # with ``windows``, ``window_start_idx``, and ``window_stop_idx`` defined.
-        # For genome-wide stats, we create a single window spanning all variants.
-        ds_for_stats = self.dataset
-        if "windows" not in ds_for_stats.dims:
-            n_variants = int(ds_for_stats.dims.get("variants", 0))
-            ds_for_stats = ds_for_stats.assign_coords(windows=np.arange(1, dtype=np.int64))
-            ds_for_stats["window_start_idx"] = (["windows"], np.array([0], dtype=np.int64))
-            ds_for_stats["window_stop_idx"] = (["windows"], np.array([n_variants], dtype=np.int64))
-
         if stats is None:
             stats = [
                 # SFS statistics
@@ -1203,37 +1192,37 @@ class GenomicDataset:
         
         for stat in stats:
             if stat == 'tajima_d':
-                result_ds = tajima_d(ds_for_stats)
+                result_ds = tajima_d(self.dataset)
                 results[stat] = np.mean(result_ds['tajima_d'].values)
             elif stat in ['theta_pi', 'pi', 'nucleotide_diversity']:
-                result_ds = theta_pi(ds_for_stats, use_fixed_n=use_fixed_n)
+                result_ds = theta_pi(self.dataset, use_fixed_n=use_fixed_n)
                 results[stat] = np.mean(result_ds['theta_pi'].values)
             elif stat in ['theta_w', 'watterson_theta']:
-                result_ds = theta_w(ds_for_stats)
+                result_ds = theta_w(self.dataset)
                 results[stat] = np.mean(result_ds['theta_w'].values)
             elif stat in ['theta_h', 'fay_wu_theta']:
-                result_ds = theta_h(ds_for_stats)
+                result_ds = theta_h(self.dataset)
                 results[stat] = np.mean(result_ds['theta_h'].values)
             elif stat == 'theta_l':
-                result_ds = theta_l(ds_for_stats)
+                result_ds = theta_l(self.dataset)
                 results[stat] = np.mean(result_ds['theta_l'].values)
             elif stat == 'fu_li_d':
-                result_ds = fu_li_d(ds_for_stats, folded=True)
+                result_ds = fu_li_d(self.dataset, folded=True)
                 results[stat] = np.mean(result_ds['fu_li_d_star'].values)
             elif stat == 'fu_li_f':
-                result_ds = fu_li_f(ds_for_stats, folded=True)
+                result_ds = fu_li_f(self.dataset, folded=True)
                 results[stat] = np.mean(result_ds['fu_li_f_star'].values)
             elif stat == 'fu_li_d_unfolded':
-                result_ds = fu_li_d_unfolded(ds_for_stats)
+                result_ds = fu_li_d_unfolded(self.dataset)
                 results[stat] = np.mean(result_ds['fu_li_d'].values)
             elif stat == 'fu_li_f_unfolded':
-                result_ds = fu_li_f_unfolded(ds_for_stats)
+                result_ds = fu_li_f_unfolded(self.dataset)
                 results[stat] = np.mean(result_ds['fu_li_f'].values)
             elif stat == 'zeng_e':
-                result_ds = zeng_e(ds_for_stats)
+                result_ds = zeng_e(self.dataset)
                 results[stat] = np.mean(result_ds['zeng_e'].values)
             elif stat == 'fay_wu_h':
-                result_ds = fay_wu_h(ds_for_stats)
+                result_ds = fay_wu_h(self.dataset)
                 results[stat] = np.mean(result_ds['fay_wu_h'].values)
         
         # Print mean statistics

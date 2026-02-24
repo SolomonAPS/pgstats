@@ -1,7 +1,0 @@
-{
-    "_ARRAY_DIMENSIONS": [
-        "variants",
-        "INFO_AC_dim"
-    ],
-    "description": "Allele count in genotypes, for each ALT allele, in the same order as listed"
-}
