@@ -26,6 +26,7 @@ from .sfs_statistics import (
     fay_wu_h,
     # SFS components
     singletons,
+    windowed_sfs,
 )
 
 from .ld_statistics import (
@@ -67,6 +68,7 @@ __all__ = [
     
     # SFS components
     "singletons",
+    "windowed_sfs",
     
     # Linkage disequilibrium statistics
     "calculate_ld_matrix",

@@ -165,6 +165,8 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
             'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
             # Singleton counts
             'singletons', 'singletons_unfolded',
+            # Full site frequency spectrum (wide columns sfs_*_1, sfs_*_2, ...)
+            'sfs_folded', 'sfs_unfolded',
             # Special option
             'all'
         ],

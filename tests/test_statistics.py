@@ -16,7 +16,6 @@ from pgstats.stats.sfs_statistics import (
     theta_w,
     theta_h,
     fay_wu_h,
-    dh_joint_test,
     # Low-level functions for testing
     calculate_a1,
     calculate_a2,
@@ -25,7 +24,8 @@ from pgstats.stats.sfs_statistics import (
     calculate_theta_w,
     calculate_theta_h,
     get_unfolded_sfs,
-    get_folded_sfs
+    get_folded_sfs,
+    windowed_sfs,
 )
 
 
@@ -106,6 +106,67 @@ class TestHelperFunctions:
         
         # Pi should be > 0 for polymorphic data
         assert pi > 0
+
+
+class TestWindowedSfs:
+    """Per-window site frequency spectrum (full bin vector)."""
+
+    def test_windowed_sfs_unfolded_one_window(self):
+        import xarray as xr
+
+        call_genotype = np.array(
+            [
+                [[0, 0], [0, 0], [1, 1]],
+                [[0, 0], [1, 1], [1, 1]],
+            ],
+            dtype=np.int8,
+        )
+        ds = xr.Dataset(
+            {
+                "call_genotype": (["variants", "samples", "ploidy"], call_genotype),
+                "window_start_idx": ("windows", np.array([0], dtype=np.int64)),
+                "window_stop_idx": ("windows", np.array([2], dtype=np.int64)),
+            },
+            coords={
+                "variants": np.arange(2),
+                "samples": np.arange(3),
+                "ploidy": np.arange(2),
+                "windows": np.array([0]),
+            },
+        )
+        out = windowed_sfs(ds, folded=False)
+        assert "sfs_unfolded" in out.data_vars
+        assert out.sfs_unfolded.shape == (1, 2)
+        np.testing.assert_array_equal(out.sfs_unfolded.values[0], [1, 1])
+        np.testing.assert_array_equal(out.sfs_bin.values, [1, 2])
+
+    def test_windowed_sfs_folded_one_window(self):
+        import xarray as xr
+
+        call_genotype = np.array(
+            [
+                [[0, 0], [0, 0], [1, 1], [1, 1]],
+                [[1, 1], [1, 1], [1, 1], [0, 0]],
+                [[1, 1], [0, 0], [0, 0], [0, 0]],
+            ],
+            dtype=np.int8,
+        )
+        ds = xr.Dataset(
+            {
+                "call_genotype": (["variants", "samples", "ploidy"], call_genotype),
+                "window_start_idx": ("windows", np.array([0], dtype=np.int64)),
+                "window_stop_idx": ("windows", np.array([3], dtype=np.int64)),
+            },
+            coords={
+                "variants": np.arange(3),
+                "samples": np.arange(4),
+                "ploidy": np.arange(2),
+                "windows": np.array([0]),
+            },
+        )
+        out = windowed_sfs(ds, folded=True)
+        assert out.sfs_folded.shape == (1, 2)
+        np.testing.assert_array_equal(out.sfs_folded.values[0], [2, 1])
 
 
 class TestTajimaDStatistic:
@@ -394,47 +455,6 @@ class TestFayWuH:
         assert 'fay_wu_h' in result.data_vars
         # All values should be 0 for monomorphic sites
         assert np.all(result.fay_wu_h.values == 0)
-
-
-class TestDHJointTest:
-    """Tests for DH joint test combining Tajima's D and Fay and Wu's H."""
-    
-    def test_dh_joint_test_basic(self):
-        """Test basic DH joint test calculation."""
-        ds = sg.simulate_genotype_call_dataset(n_variant=50, n_sample=20, missing_pct=0.0)
-        
-        result = dh_joint_test(ds)
-        
-        # Should contain both statistics
-        assert 'tajima_d' in result.data_vars
-        assert 'fay_wu_h' in result.data_vars
-        assert len(result.tajima_d) == 50
-        assert len(result.fay_wu_h) == 50
-        
-        # Values should be finite
-        assert np.all(np.isfinite(result.tajima_d.values))
-        assert np.all(np.isfinite(result.fay_wu_h.values))
-    
-    def test_dh_joint_test_consistency(self):
-        """Test that DH joint test gives same results as individual tests."""
-        ds = sg.simulate_genotype_call_dataset(n_variant=30, n_sample=15, missing_pct=0.1)
-        
-        # Calculate individually
-        tajima_result = tajima_d(ds)
-        fay_wu_result = fay_wu_h(ds)
-        
-        # Calculate jointly
-        joint_result = dh_joint_test(ds)
-        
-        # Results should be identical
-        np.testing.assert_array_almost_equal(
-            joint_result.tajima_d.values, 
-            tajima_result.tajima_d.values
-        )
-        np.testing.assert_array_almost_equal(
-            joint_result.fay_wu_h.values, 
-            fay_wu_result.fay_wu_h.values
-        )
 
 
 if __name__ == "__main__":

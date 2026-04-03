@@ -1601,6 +1601,65 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
     return result
 
 
+def windowed_sfs(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool = True) -> xr.Dataset:
+    """
+    Per-window site frequency spectrum (full vector of bin counts).
+
+    Bin i counts sites with derived allele count i (unfolded) or minor allele
+    count i (folded), matching get_unfolded_sfs / get_folded_sfs.
+
+    Args:
+        ds: sgkit windowed dataset (must define windows, window_start_idx, window_stop_idx).
+        call_genotype: Genotype variable name.
+        folded: If True, folded SFS (η); if False, unfolded SFS (ξ), requiring polarized genotypes.
+
+    Returns:
+        Copy of ds with data variable ``sfs_folded`` or ``sfs_unfolded`` of shape
+        (windows, sfs_bin) and coordinate sfs_bin = 1, 2, ... n_bins.
+    """
+    genotypes = ds[call_genotype].values
+    n_variants, n_samples, ploidy = genotypes.shape
+
+    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
+    for i in range(n_variants):
+        for j in range(n_samples):
+            if np.any(genotypes[i, j, :] == -1):
+                variant_matrix[i, j] = -1
+            else:
+                allele_sum = np.sum(genotypes[i, j, :])
+                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+
+    n_bins = (n_samples // 2) if folded else (n_samples - 1)
+    if n_bins == 0:
+        return ds.copy()
+
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
+
+    sfs_per_window = np.zeros((n_windows, n_bins), dtype=np.int64)
+    for w_idx in range(n_windows):
+        w_start = window_starts[w_idx]
+        w_stop = window_stops[w_idx]
+        window_variant_matrix = variant_matrix[w_start:w_stop, :]
+        if folded:
+            sfs, _ = get_folded_sfs(window_variant_matrix)
+        else:
+            sfs, _ = get_unfolded_sfs(window_variant_matrix)
+        sfs_per_window[w_idx, :] = sfs
+
+    result = ds.copy()
+    var_name = "sfs_folded" if folded else "sfs_unfolded"
+    sfs_bin = np.arange(1, n_bins + 1, dtype=np.int64)
+    result[var_name] = xr.DataArray(
+        sfs_per_window,
+        dims=["windows", "sfs_bin"],
+        coords={"sfs_bin": sfs_bin},
+        name=var_name,
+    )
+    return result
+
+
 def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     """
     Calculate Fay and Wu's H statistic for each variant.

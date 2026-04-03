@@ -21,12 +21,27 @@ from functools import wraps
 from pgstats.io.loaders import load_vcf_simple
 from pgstats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
-    theta_pi, theta_w, theta_h, theta_l, fay_wu_h, singletons
+    theta_pi, theta_w, theta_h, theta_l, fay_wu_h, singletons, windowed_sfs
 )
 from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from pgstats.stats.ld_statistics import (
     calculate_ld_matrix, calculate_windowed_ld, omega_statistic, kelly_zns
 )
+
+
+def _expand_sfs_variable_to_columns(var_name: str, da: xr.DataArray) -> Dict[str, np.ndarray]:
+    """
+    Turn a (windows, sfs_bin) DataArray into flat columns sfs_folded_1, ...
+    Returns empty dict if not an SFS array.
+    """
+    if da.ndim != 2 or "sfs_bin" not in da.dims or "windows" not in da.dims:
+        return {}
+    out: Dict[str, np.ndarray] = {}
+    values = da.values
+    bins = da["sfs_bin"].values
+    for bi, b in enumerate(bins):
+        out[f"{var_name}_{int(b)}"] = values[:, bi].copy()
+    return out
 
 
 def time_operation(operation_name: str = None):
@@ -1096,6 +1111,12 @@ class GenomicDataset:
                 # Calculate unfolded singletons (derived allele count = 1)
                 stat_ds = singletons(self.windowed_dataset, folded=False)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
+            elif stat == 'sfs_folded':
+                stat_ds = windowed_sfs(self.windowed_dataset, folded=True)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
+            elif stat == 'sfs_unfolded':
+                stat_ds = windowed_sfs(self.windowed_dataset, folded=False)
+                result_dataset = result_dataset.merge(stat_ds, compat='override')
             elif stat == 'omega_statistic':
                 stat_ds = omega_statistic(self.windowed_dataset, enable_profiling=self.enable_profiling)
                 result_dataset = result_dataset.merge(stat_ds, compat='override')
@@ -1146,8 +1167,11 @@ class GenomicDataset:
                 print(f"\nMean Statistics (windowed analysis):")
                 print("=" * 50)
                 for stat in stats_to_print:
-                    values = result_dataset[stat].values
-                    valid_mask = ~np.isnan(values)
+                    da = result_dataset[stat]
+                    if da.ndim != 1:
+                        continue
+                    values = da.values
+                    valid_mask = ~np.isnan(values.astype(float))
                     n_valid = np.sum(valid_mask)
                     total = len(values)
                     if n_valid > 0:
@@ -1224,11 +1248,35 @@ class GenomicDataset:
             elif stat == 'fay_wu_h':
                 result_ds = fay_wu_h(self.dataset)
                 results[stat] = np.mean(result_ds['fay_wu_h'].values)
+            elif stat == 'sfs_folded':
+                wds = sg.window_by_genome(self.dataset)
+                sds = windowed_sfs(wds, folded=True)
+                total = sds["sfs_folded"].values.sum(axis=0)
+                for b, c in zip(sds["sfs_bin"].values, total):
+                    results[f"sfs_folded_{int(b)}"] = int(c)
+            elif stat == 'sfs_unfolded':
+                wds = sg.window_by_genome(self.dataset)
+                sds = windowed_sfs(wds, folded=False)
+                total = sds["sfs_unfolded"].values.sum(axis=0)
+                for b, c in zip(sds["sfs_bin"].values, total):
+                    results[f"sfs_unfolded_{int(b)}"] = int(c)
         
         # Print mean statistics
         print(f"\nGenome-wide Statistics:")
         print("=" * 50)
         for stat in stats:
+            if stat in ("sfs_folded", "sfs_unfolded"):
+                keys = [
+                    k for k in results
+                    if k.startswith(stat + "_") and k.rsplit("_", 1)[-1].isdigit()
+                ]
+                keys.sort(key=lambda k: int(k.rsplit("_", 1)[1]))
+                if keys:
+                    parts = [f"{k.rsplit('_', 1)[-1]}:{results[k]}" for k in keys]
+                    print(f"  {stat:20s}: " + " ".join(parts))
+                else:
+                    print(f"  {stat:20s}: No valid values")
+                continue
             if stat in results and not pd.isna(results[stat]):
                 print(f"  {stat:20s}: {results[stat]:.6f}")
             else:
@@ -1671,6 +1719,12 @@ class GenomicDataset:
                 skip_vars = ['window_start_idx', 'window_stop_idx']
                 if var_name in skip_vars:
                     continue
+
+                da = self.window_stats[var_name]
+                flat_sfs = _expand_sfs_variable_to_columns(var_name, da)
+                if flat_sfs:
+                    data.update(flat_sfs)
+                    continue
                 
                 # Only include variables with 'windows' dimension (per-window statistics)
                 # Skip per-variant variables (variants dimension) and metadata
@@ -1969,6 +2023,10 @@ class GenomicDataset:
                 }
                 
                 for stat in stats:
+                    if stat in ("sfs_folded", "sfs_unfolded") and stat in region_stats.data_vars:
+                        da = region_stats[stat]
+                        region_data.update(_expand_sfs_variable_to_columns(stat, da))
+                        continue
                     var_names = stat_to_var.get(stat, [stat])
                     for var_name in var_names:
                         if var_name in region_stats.data_vars:
