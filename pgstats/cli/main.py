@@ -165,12 +165,11 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
             'haplotype_diversity', 'garud_h1', 'garud_h12', 'garud_h123', 'garud_h2_h1',
             # Singleton counts
             'singletons', 'singletons_unfolded',
-            # Full site frequency spectrum (wide columns sfs_*_1, sfs_*_2, ...)
+            # Site frequency spectrum: genome-wide tall output without --window-size,
+            # per-window wide columns when --window-size is set
             'sfs_folded', 'sfs_unfolded',
             # LD decay
             'ld_decay',
-            # Genome-wide SFS (separate tall output: bin, count)
-            'sfs',
             # Special option
             'all'
         ],
@@ -253,14 +252,6 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         default=1,
         help='Minimum number of non-missing overlapping sites required for two haplotypes to be considered matching when using --haplotype-ignore-missing. Default is 1. Higher values (e.g., 3-5) prevent spurious grouping of haplotypes with little overlap and reduce bridge events.'
     )
-    # Genome-wide SFS options
-    sfs_group = parser.add_argument_group('SFS options')
-    sfs_group.add_argument(
-        '--sfs-folded',
-        action='store_true',
-        help='Output folded (minor allele) SFS instead of unfolded when using --stats sfs (default: unfolded)'
-    )
-
     # LD decay options
     ld_group = parser.add_argument_group('LD decay options')
     ld_group.add_argument(
@@ -548,16 +539,19 @@ def run_stats_command(args):
     else:
         stats_to_calculate = args.stats
     
-    # Validate: genome-wide sfs cannot be mixed with other stats (different output shape)
-    if 'sfs' in stats_to_calculate and len(stats_to_calculate) > 1:
-        other = [s for s in stats_to_calculate if s != 'sfs']
-        print(
-            f"Error: --stats sfs produces a separate genome-wide output file and cannot be "
-            f"combined with other stats ({', '.join(other)}).\n"
-            f"For per-window SFS use --stats sfs_folded or --stats sfs_unfolded instead.",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    # Validate: genome-wide SFS (sfs_folded/sfs_unfolded without --window-size) cannot be
+    # mixed with other stats since it produces a separate output file
+    sfs_stats = [s for s in stats_to_calculate if s in ('sfs_folded', 'sfs_unfolded')]
+    if sfs_stats and not args.window_size and not args.region and not args.regions_file:
+        other = [s for s in stats_to_calculate if s not in ('sfs_folded', 'sfs_unfolded')]
+        if other:
+            print(
+                f"Error: --stats {'/'.join(sfs_stats)} in genome-wide mode produces a separate "
+                f"output file and cannot be combined with other stats ({', '.join(other)}).\n"
+                f"Use --window-size to run per-window SFS alongside other windowed stats.",
+                file=sys.stderr
+            )
+            sys.exit(1)
 
     # Handle LD decay separately (different output shape)
     if 'ld_decay' in stats_to_calculate:
@@ -597,9 +591,11 @@ def run_stats_command(args):
             print(f"\nAnalysis complete!")
             return
 
-    # Handle genome-wide SFS separately (tall format: bin, count)
-    if 'sfs' in stats_to_calculate:
-        folded = args.sfs_folded
+    # Handle genome-wide SFS (sfs_folded/sfs_unfolded without windowing: tall output)
+    sfs_genome_wide = [s for s in stats_to_calculate if s in ('sfs_folded', 'sfs_unfolded')]
+    if sfs_genome_wide and not args.window_size and not args.region and not args.regions_file:
+        stat_name = sfs_genome_wide[0]
+        folded = stat_name == 'sfs_folded'
         label = "folded" if folded else "unfolded"
         print(f"\nCalculating genome-wide {label} SFS...", flush=True)
         sfs_result = genomic_ds.calculate_sfs(folded=folded)
@@ -618,7 +614,7 @@ def run_stats_command(args):
             df.to_parquet(args.output, index=False)
         print(f"Results saved successfully")
 
-        stats_to_calculate = [s for s in stats_to_calculate if s != 'sfs']
+        stats_to_calculate = [s for s in stats_to_calculate if s not in ('sfs_folded', 'sfs_unfolded')]
         if not stats_to_calculate:
             print(f"\nAnalysis complete!")
             return
