@@ -169,6 +169,8 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
             'sfs_folded', 'sfs_unfolded',
             # LD decay
             'ld_decay',
+            # Genome-wide SFS (separate tall output: bin, count)
+            'sfs',
             # Special option
             'all'
         ],
@@ -251,6 +253,14 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         default=1,
         help='Minimum number of non-missing overlapping sites required for two haplotypes to be considered matching when using --haplotype-ignore-missing. Default is 1. Higher values (e.g., 3-5) prevent spurious grouping of haplotypes with little overlap and reduce bridge events.'
     )
+    # Genome-wide SFS options
+    sfs_group = parser.add_argument_group('SFS options')
+    sfs_group.add_argument(
+        '--sfs-folded',
+        action='store_true',
+        help='Output folded (minor allele) SFS instead of unfolded when using --stats sfs (default: unfolded)'
+    )
+
     # LD decay options
     ld_group = parser.add_argument_group('LD decay options')
     ld_group.add_argument(
@@ -572,6 +582,32 @@ def run_stats_command(args):
 
         # Remove ld_decay from remaining stats
         stats_to_calculate = [s for s in stats_to_calculate if s != 'ld_decay']
+        if not stats_to_calculate:
+            print(f"\nAnalysis complete!")
+            return
+
+    # Handle genome-wide SFS separately (tall format: bin, count)
+    if 'sfs' in stats_to_calculate:
+        folded = args.sfs_folded
+        label = "folded" if folded else "unfolded"
+        print(f"\nCalculating genome-wide {label} SFS...", flush=True)
+        sfs_result = genomic_ds.calculate_sfs(folded=folded)
+        import pandas as pd
+        df = pd.DataFrame({
+            'bin': sfs_result['bin'].values,
+            'count': sfs_result['count'].values,
+        })
+        logger.info(f"Saving SFS results to {args.output}")
+        print(f"\nSaving SFS results to {args.output}...")
+        if args.format == 'csv':
+            df.to_csv(args.output, index=False, header=not args.no_header)
+        elif args.format == 'tsv':
+            df.to_csv(args.output, sep='\t', index=False, header=not args.no_header)
+        elif args.format == 'parquet':
+            df.to_parquet(args.output, index=False)
+        print(f"Results saved successfully")
+
+        stats_to_calculate = [s for s in stats_to_calculate if s != 'sfs']
         if not stats_to_calculate:
             print(f"\nAnalysis complete!")
             return

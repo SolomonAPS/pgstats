@@ -1188,6 +1188,32 @@ class GenomicDataset:
         return result_dataset
     
     
+    def calculate_sfs(self, folded: bool = False) -> xr.Dataset:
+        """
+        Compute the genome-wide site frequency spectrum.
+
+        Args:
+            folded: If True, return folded (minor allele) SFS;
+                    if False, return unfolded (derived allele) SFS.
+
+        Returns:
+            xr.Dataset with dimension ``sfs_bin`` and variables
+            bin (allele count), count (number of sites).
+        """
+        import sgkit as sg
+        wds = sg.window_by_genome(self.dataset)
+        var_name = "sfs_folded" if folded else "sfs_unfolded"
+        sds = windowed_sfs(wds, folded=folded)
+        total = sds[var_name].values.sum(axis=0)
+        bins = sds["sfs_bin"].values
+        return xr.Dataset(
+            {
+                "bin": (["sfs_bin"], bins),
+                "count": (["sfs_bin"], total.astype(np.int64)),
+            },
+            coords={"sfs_bin": bins},
+        )
+
     def calculate_ld_decay(self,
                           max_distance: int,
                           bin_size: int,
