@@ -539,10 +539,24 @@ def run_stats_command(args):
     else:
         stats_to_calculate = args.stats
     
-    # Validate: genome-wide SFS (sfs_folded/sfs_unfolded without --window-size) cannot be
-    # mixed with other stats since it produces a separate output file
+    # ld_decay and genome-wide sfs are not supported with --regions-file
+    # (multi-region output format is not defined for these stats)
+    if regions_list and ('ld_decay' in stats_to_calculate or
+                         any(s in stats_to_calculate for s in ('sfs_folded', 'sfs_unfolded'))
+                         and not args.window_size):
+        bad = [s for s in stats_to_calculate
+               if s in ('ld_decay', 'sfs_folded', 'sfs_unfolded') and not args.window_size]
+        if bad:
+            print(
+                f"Error: {', '.join(bad)} cannot be used with --regions-file. "
+                f"Run per region with --region instead.",
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+    # Validate: genome-wide SFS cannot be mixed with other stats (different output shape)
     sfs_stats = [s for s in stats_to_calculate if s in ('sfs_folded', 'sfs_unfolded')]
-    if sfs_stats and not args.window_size and not args.region and not args.regions_file:
+    if sfs_stats and not args.window_size:
         other = [s for s in stats_to_calculate if s not in ('sfs_folded', 'sfs_unfolded')]
         if other:
             print(
@@ -564,6 +578,9 @@ def run_stats_command(args):
             max_distance=args.ld_max_distance,
             bin_size=args.ld_bin_size,
             min_maf=args.ld_min_maf,
+            contig=region_contig,
+            start=region_start,
+            end=region_end,
         )
         import pandas as pd
         df = pd.DataFrame({
@@ -585,7 +602,6 @@ def run_stats_command(args):
             df.to_parquet(args.output, index=False)
         print(f"Results saved successfully")
 
-        # Remove ld_decay from remaining stats
         stats_to_calculate = [s for s in stats_to_calculate if s != 'ld_decay']
         if not stats_to_calculate:
             print(f"\nAnalysis complete!")
@@ -593,12 +609,17 @@ def run_stats_command(args):
 
     # Handle genome-wide SFS (sfs_folded/sfs_unfolded without windowing: tall output)
     sfs_genome_wide = [s for s in stats_to_calculate if s in ('sfs_folded', 'sfs_unfolded')]
-    if sfs_genome_wide and not args.window_size and not args.region and not args.regions_file:
+    if sfs_genome_wide and not args.window_size:
         stat_name = sfs_genome_wide[0]
         folded = stat_name == 'sfs_folded'
         label = "folded" if folded else "unfolded"
-        print(f"\nCalculating genome-wide {label} SFS...", flush=True)
-        sfs_result = genomic_ds.calculate_sfs(folded=folded)
+        print(f"\nCalculating {label} SFS...", flush=True)
+        sfs_result = genomic_ds.calculate_sfs(
+            folded=folded,
+            contig=region_contig,
+            start=region_start,
+            end=region_end,
+        )
         import pandas as pd
         df = pd.DataFrame({
             'bin': sfs_result['bin'].values,

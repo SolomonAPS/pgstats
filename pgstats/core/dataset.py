@@ -1188,13 +1188,26 @@ class GenomicDataset:
         return result_dataset
     
     
-    def calculate_sfs(self, folded: bool = False) -> xr.Dataset:
+    def _get_region_dataset(self, contig: str = None, start: int = None, end: int = None) -> xr.Dataset:
+        """Return self.dataset filtered to region with BED masking applied if configured."""
+        if start is None or end is None:
+            return self.dataset
+        ds = self._filter_to_region(start, end, contig)
+        if hasattr(self, 'bed_gr') and self.bed_gr is not None:
+            ds = self._apply_mask_to_region(ds, start, end, contig)
+        return ds
+
+    def calculate_sfs(self, folded: bool = False,
+                      contig: str = None, start: int = None, end: int = None) -> xr.Dataset:
         """
-        Compute the genome-wide site frequency spectrum.
+        Compute the site frequency spectrum for the loaded dataset or a specific region.
 
         Args:
             folded: If True, return folded (minor allele) SFS;
                     if False, return unfolded (derived allele) SFS.
+            contig: Contig name to filter to (optional).
+            start: Region start position in bp (optional).
+            end: Region end position in bp (optional).
 
         Returns:
             xr.Dataset with dimension ``sfs_bin`` and variables
@@ -1202,7 +1215,8 @@ class GenomicDataset:
         """
         from pgstats.stats.sfs_statistics import get_folded_sfs, get_unfolded_sfs
 
-        genotypes = self.dataset["call_genotype"].values
+        ds = self._get_region_dataset(contig, start, end)
+        genotypes = ds["call_genotype"].values
         n_variants, n_samples, ploidy = genotypes.shape
 
         variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
@@ -1232,20 +1246,27 @@ class GenomicDataset:
     def calculate_ld_decay(self,
                           max_distance: int,
                           bin_size: int,
-                          min_maf: float = 0.0) -> xr.Dataset:
+                          min_maf: float = 0.0,
+                          contig: str = None,
+                          start: int = None,
+                          end: int = None) -> xr.Dataset:
         """
-        Compute LD decay (mean r-squared by distance bin) on the loaded dataset.
+        Compute LD decay (mean r-squared by distance bin) on the loaded dataset or a region.
 
         Args:
             max_distance: maximum pairwise distance in bp.
             bin_size: distance bin width in bp.
             min_maf: minimum minor allele frequency filter (0-0.5).
+            contig: Contig name to filter to (optional).
+            start: Region start position in bp (optional).
+            end: Region end position in bp (optional).
 
         Returns:
             xr.Dataset with dimension distance_bins and variables
             bin_start, bin_end, bin_midpoint, mean_r_squared, n_pairs.
         """
-        return ld_decay(self.dataset, max_distance=max_distance,
+        ds = self._get_region_dataset(contig, start, end)
+        return ld_decay(ds, max_distance=max_distance,
                         bin_size=bin_size, min_maf=min_maf)
 
     def calculate_genome_wide_stats(self, stats: List[str] = None, use_fixed_n: bool = False) -> Dict[str, float]:
