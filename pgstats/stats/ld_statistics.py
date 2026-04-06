@@ -900,3 +900,126 @@ def kelly_zns(ds: xr.Dataset,
         print(f"[Timing] Kelly Z_nS calculation completed in {elapsed:.2f}s", flush=True)
     
     return result
+
+
+# =============================================================================
+# LD DECAY
+# =============================================================================
+
+@numba.njit(nogil=True, fastmath=False)
+def _compute_ld_decay_bins(genotypes: np.ndarray,
+                           positions: np.ndarray,
+                           max_distance: int,
+                           bin_size: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Accumulate pairwise r-squared into distance bins for LD decay.
+
+    Positions must be sorted.  The inner loop breaks early once distance
+    exceeds max_distance.
+
+    Bins are 1-indexed by bp: [1, bin_size], [bin_size+1, 2*bin_size], ...
+
+    Returns:
+        (sum_r2, counts) arrays of length n_bins.
+    """
+    n_variants = genotypes.shape[0]
+    n_samples = genotypes.shape[1]
+    ploidy = genotypes.shape[2]
+
+    n_bins = (max_distance + bin_size - 1) // bin_size
+    sum_r2 = np.zeros(n_bins, dtype=np.float64)
+    counts = np.zeros(n_bins, dtype=np.int64)
+
+    for i in range(n_variants):
+        for j in range(i + 1, n_variants):
+            dist = positions[j] - positions[i]
+            if dist > max_distance:
+                break
+            if dist <= 0:
+                continue
+
+            bin_idx = (dist - 1) // bin_size
+            if bin_idx >= n_bins:
+                continue
+
+            pair = np.zeros((n_samples, 2, ploidy), dtype=genotypes.dtype)
+            pair[:, 0, :] = genotypes[i, :, :]
+            pair[:, 1, :] = genotypes[j, :, :]
+
+            r2 = calculate_ld_r_squared(pair)
+            if not np.isnan(r2):
+                sum_r2[bin_idx] += r2
+                counts[bin_idx] += 1
+
+    return sum_r2, counts
+
+
+def ld_decay(ds: xr.Dataset,
+             max_distance: int,
+             bin_size: int,
+             min_maf: float = 0.0,
+             call_genotype: str = "call_genotype") -> xr.Dataset:
+    """
+    Compute LD decay: mean r-squared as a function of physical distance.
+
+    All variant pairs with inter-SNP distance in (0, max_distance] are
+    considered.  Pairs are placed in distance bins of width ``bin_size`` bp
+    and mean r-squared is reported per bin.
+
+    Args:
+        ds: sgkit Dataset with call_genotype and variant_position.
+        max_distance: maximum pairwise distance in bp.
+        bin_size: distance bin width in bp.
+        min_maf: minimum minor allele frequency (0-0.5).  Variants below
+                 this threshold are excluded before computing pairs.
+        call_genotype: name of the genotype variable.
+
+    Returns:
+        xr.Dataset with dimension ``distance_bins`` and variables:
+        bin_start, bin_end, bin_midpoint, mean_r_squared, n_pairs.
+    """
+    genotypes = ds[call_genotype].values
+    positions = ds["variant_position"].values
+    n_variants, n_samples, ploidy = genotypes.shape
+
+    if min_maf > 0:
+        keep = np.ones(n_variants, dtype=np.bool_)
+        for i in range(n_variants):
+            valid_alleles = 0
+            alt_count = 0
+            for s in range(n_samples):
+                if np.any(genotypes[i, s, :] == -1):
+                    continue
+                for p in range(ploidy):
+                    alt_count += genotypes[i, s, p]
+                valid_alleles += ploidy
+            if valid_alleles == 0:
+                keep[i] = False
+            else:
+                freq = alt_count / valid_alleles
+                maf = min(freq, 1.0 - freq)
+                if maf < min_maf:
+                    keep[i] = False
+        genotypes = genotypes[keep]
+        positions = positions[keep]
+
+    sum_r2, counts = _compute_ld_decay_bins(genotypes, positions,
+                                            max_distance, bin_size)
+
+    n_bins = len(sum_r2)
+    bin_starts = np.arange(n_bins, dtype=np.int64) * bin_size + 1
+    bin_ends = bin_starts + bin_size - 1
+    bin_midpoints = (bin_starts + bin_ends) / 2.0
+    with np.errstate(invalid='ignore'):
+        mean_r2 = np.where(counts > 0, sum_r2 / counts, np.nan)
+
+    return xr.Dataset(
+        {
+            "bin_start": (["distance_bins"], bin_starts),
+            "bin_end": (["distance_bins"], bin_ends),
+            "bin_midpoint": (["distance_bins"], bin_midpoints),
+            "mean_r_squared": (["distance_bins"], mean_r2),
+            "n_pairs": (["distance_bins"], counts),
+        },
+        coords={"distance_bins": np.arange(n_bins)},
+    )

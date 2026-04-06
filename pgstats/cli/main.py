@@ -167,6 +167,8 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
             'singletons', 'singletons_unfolded',
             # Full site frequency spectrum (wide columns sfs_*_1, sfs_*_2, ...)
             'sfs_folded', 'sfs_unfolded',
+            # LD decay
+            'ld_decay',
             # Special option
             'all'
         ],
@@ -249,6 +251,30 @@ def add_stats_arguments(parser: argparse.ArgumentParser):
         default=1,
         help='Minimum number of non-missing overlapping sites required for two haplotypes to be considered matching when using --haplotype-ignore-missing. Default is 1. Higher values (e.g., 3-5) prevent spurious grouping of haplotypes with little overlap and reduce bridge events.'
     )
+    # LD decay options
+    ld_group = parser.add_argument_group('LD decay options')
+    ld_group.add_argument(
+        '--ld-max-distance',
+        type=int,
+        default=None,
+        metavar='INT',
+        help='Maximum pairwise distance in bp for LD decay (required when using --stats ld_decay)'
+    )
+    ld_group.add_argument(
+        '--ld-bin-size',
+        type=int,
+        default=None,
+        metavar='INT',
+        help='Distance bin width in bp for LD decay (required when using --stats ld_decay)'
+    )
+    ld_group.add_argument(
+        '--ld-min-maf',
+        type=float,
+        default=0.0,
+        metavar='FLOAT',
+        help='Minimum minor allele frequency filter for LD decay (default: 0.0)'
+    )
+
     filter_group.add_argument(
         '--keep-zarr',
         action='store_true',
@@ -512,6 +538,44 @@ def run_stats_command(args):
     else:
         stats_to_calculate = args.stats
     
+    # Handle LD decay separately (different output shape)
+    if 'ld_decay' in stats_to_calculate:
+        if args.ld_max_distance is None or args.ld_bin_size is None:
+            print("Error: --ld-max-distance and --ld-bin-size are required for ld_decay", file=sys.stderr)
+            sys.exit(1)
+        print(f"\nCalculating LD decay (max_distance={args.ld_max_distance:,} bp, "
+              f"bin_size={args.ld_bin_size:,} bp, min_maf={args.ld_min_maf})...", flush=True)
+        decay_result = genomic_ds.calculate_ld_decay(
+            max_distance=args.ld_max_distance,
+            bin_size=args.ld_bin_size,
+            min_maf=args.ld_min_maf,
+        )
+        import pandas as pd
+        df = pd.DataFrame({
+            'bin_start': decay_result['bin_start'].values,
+            'bin_end': decay_result['bin_end'].values,
+            'bin_midpoint': decay_result['bin_midpoint'].values,
+            'mean_r_squared': decay_result['mean_r_squared'].values,
+            'n_pairs': decay_result['n_pairs'].values,
+        })
+        n_with_data = (df['n_pairs'] > 0).sum()
+        print(f"  {n_with_data} / {len(df)} distance bins have data")
+        logger.info(f"Saving LD decay results to {args.output}")
+        print(f"\nSaving LD decay results to {args.output}...")
+        if args.format == 'csv':
+            df.to_csv(args.output, index=False, header=not args.no_header)
+        elif args.format == 'tsv':
+            df.to_csv(args.output, sep='\t', index=False, header=not args.no_header)
+        elif args.format == 'parquet':
+            df.to_parquet(args.output, index=False)
+        print(f"Results saved successfully")
+
+        # Remove ld_decay from remaining stats
+        stats_to_calculate = [s for s in stats_to_calculate if s != 'ld_decay']
+        if not stats_to_calculate:
+            print(f"\nAnalysis complete!")
+            return
+
     logger.info(f"Calculating statistics: {', '.join(stats_to_calculate)}")
     print(f"\nCalculating statistics: {', '.join(stats_to_calculate)}", flush=True)
     

@@ -457,6 +457,88 @@ class TestFayWuH:
         assert np.all(result.fay_wu_h.values == 0)
 
 
+class TestLdDecay:
+    """Tests for LD decay (mean r-squared by distance bin)."""
+
+    def _make_ld_dataset(self):
+        """Two SNPs in perfect LD at distance 100 bp, one independent SNP at 600 bp."""
+        genotypes = np.array([
+            # SNP at pos 100: alleles perfectly correlated with SNP at pos 200
+            [[0, 0], [0, 0], [1, 1], [1, 1]],
+            # SNP at pos 200
+            [[0, 0], [0, 0], [1, 1], [1, 1]],
+            # SNP at pos 700: independent pattern
+            [[1, 1], [0, 0], [1, 1], [0, 0]],
+        ], dtype=np.int8)
+        positions = np.array([100, 200, 700])
+        ds = xr.Dataset({
+            'call_genotype': (['variants', 'samples', 'ploidy'], genotypes),
+            'variant_position': (['variants'], positions),
+            'variant_contig': (['variants'], np.zeros(3, dtype=int)),
+        })
+        return ds
+
+    def test_basic_output_shape(self):
+        from pgstats.stats.ld_statistics import ld_decay
+        ds = self._make_ld_dataset()
+        result = ld_decay(ds, max_distance=1000, bin_size=500)
+        assert 'mean_r_squared' in result.data_vars
+        assert 'n_pairs' in result.data_vars
+        assert 'bin_start' in result.data_vars
+        assert 'bin_end' in result.data_vars
+        assert 'bin_midpoint' in result.data_vars
+        assert result.sizes['distance_bins'] == 2  # 1000/500 = 2 bins
+
+    def test_bin_boundaries(self):
+        from pgstats.stats.ld_statistics import ld_decay
+        ds = self._make_ld_dataset()
+        result = ld_decay(ds, max_distance=1000, bin_size=500)
+        np.testing.assert_array_equal(result['bin_start'].values, [1, 501])
+        np.testing.assert_array_equal(result['bin_end'].values, [500, 1000])
+        np.testing.assert_array_equal(result['bin_midpoint'].values, [250.5, 750.5])
+
+    def test_perfect_ld_pair(self):
+        """SNPs at pos 100 and 200 (dist=100, bin 0) should have r2=1."""
+        from pgstats.stats.ld_statistics import ld_decay
+        ds = self._make_ld_dataset()
+        result = ld_decay(ds, max_distance=1000, bin_size=500)
+        # Bin 0 [1-500]: pairs (100,200)=dist 100, (200,700)=dist 500
+        # Bin 1 [501-1000]: pair (100,700)=dist 600
+        assert result['n_pairs'].values[0] == 2  # two pairs in bin 0
+        assert result['n_pairs'].values[1] == 1  # one pair in bin 1
+
+    def test_max_distance_filter(self):
+        """Pairs beyond max_distance should be excluded."""
+        from pgstats.stats.ld_statistics import ld_decay
+        ds = self._make_ld_dataset()
+        result = ld_decay(ds, max_distance=500, bin_size=500)
+        assert result.sizes['distance_bins'] == 1
+        # Only pair (100,200) dist=100 and (200,700) dist=500 are within range
+        assert result['n_pairs'].values[0] == 2
+
+    def test_maf_filter(self):
+        """With high min_maf, monomorphic-ish variants get dropped."""
+        from pgstats.stats.ld_statistics import ld_decay
+        # All 3 SNPs have MAF=0.5 in our fixture, so min_maf=0.4 keeps all
+        ds = self._make_ld_dataset()
+        result_no_filter = ld_decay(ds, max_distance=1000, bin_size=500)
+        result_with_filter = ld_decay(ds, max_distance=1000, bin_size=500, min_maf=0.4)
+        np.testing.assert_array_equal(
+            result_no_filter['n_pairs'].values,
+            result_with_filter['n_pairs'].values,
+        )
+
+    def test_empty_bins_are_nan(self):
+        """Bins with no pairs should have NaN mean_r_squared."""
+        from pgstats.stats.ld_statistics import ld_decay
+        ds = self._make_ld_dataset()
+        # bin_size=50, max_distance=1000 → many empty bins
+        result = ld_decay(ds, max_distance=1000, bin_size=50)
+        empty_mask = result['n_pairs'].values == 0
+        assert np.any(empty_mask)
+        assert np.all(np.isnan(result['mean_r_squared'].values[empty_mask]))
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

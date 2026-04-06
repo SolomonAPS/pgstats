@@ -37,6 +37,7 @@ from .ld_statistics import (
     ld_d_prime,
     ld_r_squared,
     omega_statistic,
+    ld_decay,
 )
 
 from .haplotype_statistics import (
@@ -77,6 +78,7 @@ __all__ = [
     "ld_d_prime",
     "ld_r_squared",
     "omega_statistic",
+    "ld_decay",
     
     # Haplotype statistics
     "haplotype_diversity",

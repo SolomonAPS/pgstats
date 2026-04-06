@@ -25,7 +25,8 @@ from pgstats.stats.sfs_statistics import (
 )
 from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from pgstats.stats.ld_statistics import (
-    calculate_ld_matrix, calculate_windowed_ld, omega_statistic, kelly_zns
+    calculate_ld_matrix, calculate_windowed_ld, omega_statistic, kelly_zns,
+    ld_decay,
 )
 
 
@@ -1187,6 +1188,25 @@ class GenomicDataset:
         return result_dataset
     
     
+    def calculate_ld_decay(self,
+                          max_distance: int,
+                          bin_size: int,
+                          min_maf: float = 0.0) -> xr.Dataset:
+        """
+        Compute LD decay (mean r-squared by distance bin) on the loaded dataset.
+
+        Args:
+            max_distance: maximum pairwise distance in bp.
+            bin_size: distance bin width in bp.
+            min_maf: minimum minor allele frequency filter (0-0.5).
+
+        Returns:
+            xr.Dataset with dimension distance_bins and variables
+            bin_start, bin_end, bin_midpoint, mean_r_squared, n_pairs.
+        """
+        return ld_decay(self.dataset, max_distance=max_distance,
+                        bin_size=bin_size, min_maf=min_maf)
+
     def calculate_genome_wide_stats(self, stats: List[str] = None, use_fixed_n: bool = False) -> Dict[str, float]:
         """
         Calculate genome-wide statistics.
