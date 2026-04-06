@@ -548,6 +548,17 @@ def run_stats_command(args):
     else:
         stats_to_calculate = args.stats
     
+    # Validate: genome-wide sfs cannot be mixed with other stats (different output shape)
+    if 'sfs' in stats_to_calculate and len(stats_to_calculate) > 1:
+        other = [s for s in stats_to_calculate if s != 'sfs']
+        print(
+            f"Error: --stats sfs produces a separate genome-wide output file and cannot be "
+            f"combined with other stats ({', '.join(other)}).\n"
+            f"For per-window SFS use --stats sfs_folded or --stats sfs_unfolded instead.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
     # Handle LD decay separately (different output shape)
     if 'ld_decay' in stats_to_calculate:
         if args.ld_max_distance is None or args.ld_bin_size is None:
