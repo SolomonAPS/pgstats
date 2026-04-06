@@ -1200,16 +1200,31 @@ class GenomicDataset:
             xr.Dataset with dimension ``sfs_bin`` and variables
             bin (allele count), count (number of sites).
         """
-        import sgkit as sg
-        wds = sg.window_by_genome(self.dataset)
-        var_name = "sfs_folded" if folded else "sfs_unfolded"
-        sds = windowed_sfs(wds, folded=folded)
-        total = sds[var_name].values.sum(axis=0)
-        bins = sds["sfs_bin"].values
+        from pgstats.stats.sfs_statistics import get_folded_sfs, get_unfolded_sfs
+
+        genotypes = self.dataset["call_genotype"].values
+        n_variants, n_samples, ploidy = genotypes.shape
+
+        variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
+        for i in range(n_variants):
+            for j in range(n_samples):
+                if np.any(genotypes[i, j, :] == -1):
+                    variant_matrix[i, j] = -1
+                else:
+                    allele_sum = int(np.sum(genotypes[i, j, :]))
+                    variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+
+        if folded:
+            counts, _ = get_folded_sfs(variant_matrix)
+        else:
+            counts, _ = get_unfolded_sfs(variant_matrix)
+
+        n_bins = len(counts)
+        bins = np.arange(1, n_bins + 1, dtype=np.int64)
         return xr.Dataset(
             {
                 "bin": (["sfs_bin"], bins),
-                "count": (["sfs_bin"], total.astype(np.int64)),
+                "count": (["sfs_bin"], counts.astype(np.int64)),
             },
             coords={"sfs_bin": bins},
         )
