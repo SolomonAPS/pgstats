@@ -108,19 +108,18 @@ def calculate_ld_d(genotypes: np.ndarray) -> float:
     n_valid_gametes = 0
     n_A = 0.0  # Total alternate alleles at locus A
     n_B = 0.0  # Total alternate alleles at locus B
-    n_valid_alleles = 0
-    
+
     for sample_idx in range(n_samples):
         for chrom_idx in range(ploidy):
             allele_A = genotypes[sample_idx, 0, chrom_idx]
             allele_B = genotypes[sample_idx, 1, chrom_idx]
-        
+
             # Skip if either allele is missing
             if allele_A < 0 or allele_B < 0:
                 continue
-            
+
             n_valid_gametes += 1
-            
+
             # Count gamete types
             if allele_A == 1 and allele_B == 1:
                 count_AB += 1
@@ -130,25 +129,21 @@ def calculate_ld_d(genotypes: np.ndarray) -> float:
                 count_aB += 1
             else:  # allele_A == 0 and allele_B == 0
                 count_ab += 1
-            
-            # Count alleles for frequency calculation
+
             if allele_A == 1:
                 n_A += 1
             if allele_B == 1:
                 n_B += 1
-            n_valid_alleles += 2
-    
+
     if n_valid_gametes == 0:
         return np.nan
-    
+
     # Calculate gamete frequencies
     P_AB = count_AB / n_valid_gametes
-    
+
     # Calculate allele frequencies
-    if n_valid_alleles == 0:
-        return np.nan
-    p_A = n_A / n_valid_alleles
-    p_B = n_B / n_valid_alleles
+    p_A = n_A / n_valid_gametes
+    p_B = n_B / n_valid_gametes
     
     # Calculate D = P_AB - p_A * p_B
     D = P_AB - p_A * p_B
@@ -183,28 +178,28 @@ def calculate_ld_d_prime(genotypes: np.ndarray) -> float:
     n_samples, n_loci, ploidy = genotypes.shape
     n_A = 0.0
     n_B = 0.0
-    n_valid_alleles = 0
-    
+    n_valid_gametes_dp = 0
+
     for sample_idx in range(n_samples):
         for chrom_idx in range(ploidy):
             allele_A = genotypes[sample_idx, 0, chrom_idx]
             allele_B = genotypes[sample_idx, 1, chrom_idx]
-            
+
             if allele_A < 0 or allele_B < 0:
                 continue
-            
+
+            n_valid_gametes_dp += 1
             if allele_A == 1:
                 n_A += 1
             if allele_B == 1:
                 n_B += 1
-            n_valid_alleles += 2
-    
-    if n_valid_alleles == 0:
+
+    if n_valid_gametes_dp == 0:
         return np.nan
-    
-    p_A = n_A / n_valid_alleles
-    p_B = n_B / n_valid_alleles
-    
+
+    p_A = n_A / n_valid_gametes_dp
+    p_B = n_B / n_valid_gametes_dp
+
     # Calculate D_max based on sign of D
     if D >= 0:
         D_max = min(p_A * (1 - p_B), (1 - p_A) * p_B)
@@ -252,27 +247,27 @@ def calculate_ld_r_squared(genotypes: np.ndarray) -> float:
     n_samples, n_loci, ploidy = genotypes.shape
     n_A = 0.0
     n_B = 0.0
-    n_valid_alleles = 0
-    
+    n_valid_gametes_r2 = 0
+
     for sample_idx in range(n_samples):
         for chrom_idx in range(ploidy):
             allele_A = genotypes[sample_idx, 0, chrom_idx]
             allele_B = genotypes[sample_idx, 1, chrom_idx]
-    
+
             if allele_A < 0 or allele_B < 0:
                 continue
-            
+
+            n_valid_gametes_r2 += 1
             if allele_A == 1:
                 n_A += 1
             if allele_B == 1:
                 n_B += 1
-            n_valid_alleles += 2
-    
-    if n_valid_alleles == 0:
+
+    if n_valid_gametes_r2 == 0:
         return np.nan
-    
-    p_A = n_A / n_valid_alleles
-    p_B = n_B / n_valid_alleles
+
+    p_A = n_A / n_valid_gametes_r2
+    p_B = n_B / n_valid_gametes_r2
     
     # Calculate denominator: p_A(1-p_A) * p_B(1-p_B)
     denominator = p_A * (1 - p_A) * p_B * (1 - p_B)

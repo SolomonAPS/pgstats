@@ -21,7 +21,8 @@ from functools import wraps
 from pgstats.io.loaders import load_vcf_simple
 from pgstats.stats.sfs_statistics import (
     tajima_d, fu_li_d, fu_li_f, fu_li_d_unfolded, fu_li_f_unfolded, zeng_e,
-    theta_pi, theta_w, theta_h, theta_l, fay_wu_h, singletons, windowed_sfs
+    theta_pi, theta_w, theta_h, theta_l, fay_wu_h, singletons, windowed_sfs,
+    segregating_sites_per_window,
 )
 from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
 from pgstats.stats.ld_statistics import (
@@ -76,7 +77,7 @@ class WindowConfig:
     step_size: Optional[int] = None  # Step size (defaults to window_size)
     start: Optional[int] = None  # Start position for region analysis
     end: Optional[int] = None  # End position for region analysis
-    min_variants: int = 5  # Minimum variants per window
+    min_variants: int = 5  # Minimum VCF variant rows per window (not segregating-site count)
     
     def __post_init__(self):
         if self.window_size is not None and self.step_size is None:
@@ -853,7 +854,7 @@ class GenomicDataset:
         n_removed = len(self.window_filter_mask) - n_filtered
         
         if self.window_config.min_variants == 0:
-            print(f"Keeping all {n_filtered} windows (min_variants=0; users can filter by n_variants column)")
+            print(f"Keeping all {n_filtered} windows (min_variants=0; filter windows using output columns as needed)")
         else:
             print(f"Will filter to {n_filtered} windows (removing {n_removed} with <{self.window_config.min_variants} variants after stats calculation)")
     
@@ -971,14 +972,15 @@ class GenomicDataset:
             valid_windows_mask = n_variants_per_window >= self.window_config.min_variants
             # Filter the windowed dataset to only valid windows
             self.windowed_dataset = self.windowed_dataset.isel(windows=valid_windows_mask)
-            # Update n_variants array to match filtered dataset
-            n_variants_per_window = n_variants_per_window[valid_windows_mask]
         
         # Start with a copy of the FILTERED windowed_dataset
         result_dataset = self.windowed_dataset.copy()
         
-        # Add n_variants per window
-        result_dataset['n_variants'] = (['windows'], n_variants_per_window)
+        # Segregating sites per window (matches theta_w / SFS), not VCF row count
+        result_dataset['n_variants'] = (
+            ['windows'],
+            segregating_sites_per_window(self.windowed_dataset).astype(np.int64),
+        )
         
         
         # Calculate each statistic
@@ -1213,20 +1215,14 @@ class GenomicDataset:
             xr.Dataset with dimension ``sfs_bin`` and variables
             bin (allele count), count (number of sites).
         """
-        from pgstats.stats.sfs_statistics import get_folded_sfs, get_unfolded_sfs
+        from pgstats.stats.sfs_statistics import (
+            get_folded_sfs, get_unfolded_sfs, _genotypes_to_haplotype_matrix,
+        )
 
         ds = self._get_region_dataset(contig, start, end)
         genotypes = ds["call_genotype"].values
-        n_variants, n_samples, ploidy = genotypes.shape
 
-        variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-        for i in range(n_variants):
-            for j in range(n_samples):
-                if np.any(genotypes[i, j, :] == -1):
-                    variant_matrix[i, j] = -1
-                else:
-                    allele_sum = int(np.sum(genotypes[i, j, :]))
-                    variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+        variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
 
         if folded:
             counts, _ = get_folded_sfs(variant_matrix)
@@ -1957,7 +1953,7 @@ class GenomicDataset:
             window_size: Window size in bp for sliding window analysis
             step_size: Step size for sliding windows (default: window_size)
             stats: List of statistics to calculate (default: all available)
-            min_variants: Minimum variants per window (default: 1)
+            min_variants: Minimum VCF variant rows per window (default: 1)
             use_callable_sites: Whether to use callable sites mask (default: True)
             use_fixed_n: Whether to use fixed sample size for theta_pi
             haplotype_ignore_missing: If True, ignore missing data when hashing haplotypes
@@ -1971,7 +1967,7 @@ class GenomicDataset:
             DataFrame with columns:
             - region_contig, region_start, region_end: Region identifiers
             - window_start, window_end: Window boundaries
-            - n_variants: Number of variants in window
+            - n_variants: Segregating sites in window (polymorphic among called samples)
             - <stat_name>: Calculated statistics
             
         Example:

@@ -136,9 +136,11 @@ class TestWindowedSfs:
         )
         out = windowed_sfs(ds, folded=False)
         assert "sfs_unfolded" in out.data_vars
-        assert out.sfs_unfolded.shape == (1, 2)
-        np.testing.assert_array_equal(out.sfs_unfolded.values[0], [1, 1])
-        np.testing.assert_array_equal(out.sfs_bin.values, [1, 2])
+        # 3 diploid samples → 6 haplotypes → n_bins = 5
+        # site 1: 2 derived (hom-alt = 2 alleles) → ξ₂; site 2: 4 derived → ξ₄
+        assert out.sfs_unfolded.shape == (1, 5)
+        np.testing.assert_array_equal(out.sfs_unfolded.values[0], [0, 1, 0, 1, 0])
+        np.testing.assert_array_equal(out.sfs_bin.values, [1, 2, 3, 4, 5])
 
     def test_windowed_sfs_folded_one_window(self):
         import xarray as xr
@@ -165,8 +167,10 @@ class TestWindowedSfs:
             },
         )
         out = windowed_sfs(ds, folded=True)
-        assert out.sfs_folded.shape == (1, 2)
-        np.testing.assert_array_equal(out.sfs_folded.values[0], [2, 1])
+        # 4 diploid samples → 8 haplotypes → n_bins = 4
+        # site 1: MAC=4 (4/8); site 2: MAC=2 (6/8 → fold → 2); site 3: MAC=2 (2/8)
+        assert out.sfs_folded.shape == (1, 4)
+        np.testing.assert_array_equal(out.sfs_folded.values[0], [0, 2, 0, 1])
 
 
 class TestTajimaDStatistic:
