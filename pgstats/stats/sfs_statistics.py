@@ -272,18 +272,21 @@ def calculate_d_n(n: int) -> float:
     Calculate d_n = b_n/a_n² - (2/n)(1 + 1/a_n + a_n/n) - 1/n².
     Used in Fu and Li's D* variance calculation.
     From Fu and Li (1993), equation 9.26c.
-    
+
+    NOTE: b_n here is Walsh & Lynch's harmonic sum of squares Σ(1/i²) = a₂,
+    NOT Tajima's b₂ polynomial. Using Tajima's b₂ makes d_n (and hence β*)
+    negative, so Var(D*) shrinks with S and goes negative for large windows.
+
     Args:
         n: Sample size
-        
+
     Returns:
         float: d_n value
     """
     a1 = calculate_a1(n)
     a2 = calculate_a2(n)
-    b2 = calculate_b2(n)
-    
-    return b2 / (a1 * a1) - (2.0 / n) * (1.0 + 1.0 / a1 + a1 / n) - 1.0 / (n * n)
+
+    return a2 / (a1 * a1) - (2.0 / n) * (1.0 + 1.0 / a1 + a1 / n) - 1.0 / (n * n)
 
 
 @numba.njit
@@ -300,15 +303,26 @@ def calculate_v_d_star(n: int, a1: float, a2: float) -> tuple[float, float]:
     Returns:
         tuple: (α*, β*) variance components
     """
-    b2 = calculate_b2(n)
-    
-    # β* = (1/(a_n² + b_n)) * [b_n/a_n² - (2/n)(1 + 1/a_n + a_n/n) - 1/n²]
-    beta_star = (1.0 / (a1 * a1 + b2)) * calculate_d_n(n)
-    
-    # α* = (1/a_n) * [(n+1)/n - 1/a_n] - β*
-    alpha_star = (1.0 / a1) * calculate_c_n(n) - beta_star
-    
-    return alpha_star, beta_star
+    # Simonsen et al. (1995)-corrected Fu & Li D* variance components, as
+    # implemented in libsequence/DnaSP. These are in MUTATION-COUNT units:
+    # numerator (n/(n-1))·S - a₁·η₁ has Var = u_D*·S + v_D*·S².
+    # The window code uses the θ-scaled numerator S/a₁ - ((n-1)/n)·η₁, so it
+    # multiplies this variance by ((n-1)/(n·a₁))².
+    # (The Walsh & Lynch 9.26 transcription of α*/β* miscalibrates: neutral-
+    # coalescent simulation gives sd(D*) ≈ 1.5-2.2 with it, ≈ 1.0 with this.)
+    if n < 3:
+        return (np.nan, np.nan)
+    c_n = 2.0 * (n * a1 - 2.0 * (n - 1.0)) / ((n - 1.0) * (n - 2.0))
+    a1_n1 = a1 + 1.0 / n  # a_{n+1}
+    d_n = c_n + (n - 2.0) / ((n - 1.0) * (n - 1.0)) \
+        + (2.0 / (n - 1.0)) * (1.5 - (2.0 * a1_n1 - 3.0) / (n - 2.0) - 1.0 / n)
+    nn = n / (n - 1.0)
+    v_d_star = (nn * nn * a2 + a1 * a1 * d_n
+                - 2.0 * (n * a1 * (a1 + 1.0)) / ((n - 1.0) * (n - 1.0))) \
+        / (a1 * a1 + a2)
+    u_d_star = nn * (a1 - nn) - v_d_star
+
+    return u_d_star, v_d_star
 
 
 @numba.njit
@@ -325,25 +339,80 @@ def calculate_v_f_star(n: int, a1: float, a2: float) -> tuple[float, float]:
     Returns:
         tuple: (α_F, β_F) variance components
     """
-    b2 = calculate_b2(n)
-    
     # Calculate a_{n+1} for the formula
     a_n_plus_1 = calculate_a1(n + 1)
-    
+
+    # b_n = Σ(1/i²) = a₂ (Walsh & Lynch notation), NOT Tajima's b₂ polynomial
     # β_F = (1/(a_n² + b_n)) * [(2n³ + 110n² - 255n + 153)/(9n²(n-1)) + (2(n-1)a_n)/n² - (8b_n)/n]
     term1 = (2.0 * n * n * n + 110.0 * n * n - 255.0 * n + 153.0) / (9.0 * n * n * (n - 1.0))
     term2 = (2.0 * (n - 1.0) * a1) / (n * n)
-    term3 = (8.0 * b2) / n
-    
-    beta_f = (1.0 / (a1 * a1 + b2)) * (term1 + term2 - term3)
+    term3 = (8.0 * a2) / n
+
+    beta_f = (1.0 / (a1 * a1 + a2)) * (term1 + term2 - term3)
     
     # α_F = (1/a_n) * [(4n² + 19n + 3 - 12(n+1)a_{n+1})/(3n(n-1))] - β_F
     numerator = 4.0 * n * n + 19.0 * n + 3.0 - 12.0 * (n + 1.0) * a_n_plus_1
     denominator = 3.0 * n * (n - 1.0)
-    
+
     alpha_f = (1.0 / a1) * (numerator / denominator) - beta_f
-    
+
     return alpha_f, beta_f
+
+
+@numba.njit
+def calculate_v_d_unfolded(n: int, a1: float, a2: float) -> tuple[float, float]:
+    """
+    Variance components for Fu and Li's D (unfolded, outgroup-based).
+    From Fu & Li (1993) with the Simonsen et al. (1995) correction, as
+    implemented in libsequence/DnaSP.
+
+    In mutation-count units the numerator is (S - a₁·ζ₁) and
+    Var = u_D·S + v_D·S². The window code uses the θ-scaled numerator
+    (S/a₁ - ζ₁), so it must divide this variance by a₁².
+
+    Args:
+        n: Sample size
+        a1: a₁ = Σ 1/i
+        a2: a₂ = Σ 1/i²
+
+    Returns:
+        tuple: (u_D, v_D)
+    """
+    if n < 3:
+        return (np.nan, np.nan)
+    c_n = 2.0 * (n * a1 - 2.0 * (n - 1.0)) / ((n - 1.0) * (n - 2.0))
+    v_d = 1.0 + (a1 * a1 / (a2 + a1 * a1)) * (c_n - (n + 1.0) / (n - 1.0))
+    u_d = a1 - 1.0 - v_d
+    return u_d, v_d
+
+
+@numba.njit
+def calculate_v_f_unfolded(n: int, a1: float, a2: float) -> tuple[float, float]:
+    """
+    Variance components for Fu and Li's F (unfolded, outgroup-based).
+    From Fu & Li (1993) with the Simonsen et al. (1995) correction, as
+    implemented in libsequence/DnaSP.
+
+    Numerator is (π - ζ₁) directly (count units), Var = u_F·S + v_F·S².
+
+    Args:
+        n: Sample size
+        a1: a₁ = Σ 1/i
+        a2: a₂ = Σ 1/i²
+
+    Returns:
+        tuple: (u_F, v_F)
+    """
+    if n < 3:
+        return (np.nan, np.nan)
+    c_n = 2.0 * (n * a1 - 2.0 * (n - 1.0)) / ((n - 1.0) * (n - 2.0))
+    a1_n1 = a1 + 1.0 / n  # a_{n+1}
+    v_f = (c_n + 2.0 * (n * n + n + 3.0) / (9.0 * n * (n - 1.0)) - 2.0 / (n - 1.0)) \
+        / (a1 * a1 + a2)
+    u_f = (1.0 + (n + 1.0) / (3.0 * (n - 1.0))
+           - 4.0 * (n + 2.0) / ((n + 1.0) * (n - 1.0)) * (a1_n1 - 2.0 * n / (n + 1.0))) \
+        / a1 - v_f
+    return u_f, v_f
 
 
 @numba.njit
@@ -565,6 +634,51 @@ def calculate_theta_w_per_site(variant_matrix: np.ndarray) -> float:
 
 
 @numba.njit
+def count_segregating_sites(variant_matrix: np.ndarray) -> int:
+    """
+    Count sites that contribute to Watterson theta (per-site missing-aware):
+    polymorphic among called genotypes (not fixed ancestral or fixed derived).
+    Matches the site loop in calculate_theta_w_per_site.
+    """
+    n_variants, n_samples = variant_matrix.shape
+    S = 0
+    for i in range(n_variants):
+        non_missing = 0
+        derived_count = 0
+        for j in range(n_samples):
+            if variant_matrix[i, j] != -1:
+                non_missing += 1
+                if variant_matrix[i, j] == 1:
+                    derived_count += 1
+        if non_missing > 1 and 1 <= derived_count <= non_missing - 1:
+            S += 1
+    return S
+
+
+def segregating_sites_per_window(
+    ds: xr.Dataset, call_genotype: str = "call_genotype"
+) -> np.ndarray:
+    """
+    Number of segregating sites per window (same definition as theta_w / SFS).
+
+    This excludes monomorphic rows among called samples (including sites fixed
+    for the derived allele). It is not the same as the number of VCF records
+    in the window.
+    """
+    genotypes = ds[call_genotype].values
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+
+    n_windows = len(ds.windows)
+    window_starts = ds.window_start_idx.values
+    window_stops = ds.window_stop_idx.values
+    counts = np.zeros(n_windows, dtype=np.int64)
+    for w_idx in range(n_windows):
+        w0, w1 = window_starts[w_idx], window_stops[w_idx]
+        counts[w_idx] = count_segregating_sites(variant_matrix[w0:w1, :])
+    return counts
+
+
+@numba.njit
 def calculate_theta_h(sfs: np.ndarray, n: int) -> float:
     """
     Calculate Fay and Wu's theta (θh).
@@ -578,11 +692,14 @@ def calculate_theta_h(sfs: np.ndarray, n: int) -> float:
     Returns:
         float: Fay and Wu's theta
     """
+    # Fay & Wu (2000) eq. 2: θ_H = Σ 2·i²·ξᵢ / (n(n-1)) — note the factor 2
+    # (equivalently Σ i²·ξᵢ / C(n,2)). Omitting it halves θ_H and biases
+    # π - θ_H upward by θ/2 under neutrality.
     theta_h = 0.0
     for i in range(1, n):
         if i - 1 < len(sfs):
-            theta_h += i * i * sfs[i - 1]
-    
+            theta_h += 2.0 * i * i * sfs[i - 1]
+
     return theta_h / (n * (n - 1))
 
 
@@ -686,6 +803,27 @@ def calculate_theta_l_per_site(variant_matrix: np.ndarray) -> float:
 
 
 # =============================================================================
+# GENOTYPE → HAPLOTYPE MATRIX HELPER
+# =============================================================================
+
+def _genotypes_to_haplotype_matrix(genotypes: np.ndarray) -> np.ndarray:
+    """Expand (n_variants, n_samples, ploidy) → (n_variants, n_haplotypes).
+
+    Each column is one chromosome so that heterozygotes contribute one 0 and
+    one 1, and hom-alts contribute two 1s — the correct allele-count semantics
+    for SFS and theta estimators.  Missing alleles (-1) propagate per chromosome.
+    """
+    n_variants, n_samples, ploidy = genotypes.shape
+    n_haplotypes = n_samples * ploidy
+    mat = np.full((n_variants, n_haplotypes), -1, dtype=np.int8)
+    for i in range(n_variants):
+        for j in range(n_samples):
+            for k in range(ploidy):
+                mat[i, j * ploidy + k] = genotypes[i, j, k]
+    return mat
+
+
+# =============================================================================
 # HIGH-LEVEL THETA ESTIMATORS (USER-FACING)
 # =============================================================================
 
@@ -716,19 +854,8 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype", use_fixed_n: 
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -749,7 +876,7 @@ def theta_pi(ds: xr.Dataset, call_genotype: str = "call_genotype", use_fixed_n: 
             window_max_n = 0
             for i in range(len(window_variant_matrix)):
                 site_n = 0
-                for j in range(n_samples):
+                for j in range(n_haplotypes):
                     if window_variant_matrix[i, j] != -1:
                         site_n += 1
                 if site_n > window_max_n:
@@ -793,19 +920,8 @@ def theta_w(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -858,19 +974,8 @@ def theta_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -923,19 +1028,8 @@ def theta_l(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1002,21 +1096,8 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix (0=ancestral, 1=derived)
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                # Sum alleles across ploidy
-                allele_sum = np.sum(genotypes[i, j, :])
-                # Convert to binary (0 or 1)
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1036,7 +1117,7 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         window_max_n = 0
         for i in range(len(window_variant_matrix)):
             site_n = 0
-            for j in range(n_samples):
+            for j in range(n_haplotypes):
                 if window_variant_matrix[i, j] != -1:
                     site_n += 1
             if site_n > window_max_n:
@@ -1063,9 +1144,12 @@ def tajima_d(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         pi = calculate_pi(window_variant_matrix)
         
         # Calculate variance using window_max_n
-        # From Walsh & Lynch 2018, Equation 9.24a (page 305):
-        # Var(D) = √(α_D*S + β_D*S²) where α_D = c₁, β_D = c₂
-        var = c1 * S + c2 * S * (S - 1)
+        # Tajima (1989): Var(π - θ_w) = e₁·S + e₂·S(S-1) with
+        # e₁ = c₁/a₁ and e₂ = c₂/(a₁² + a₂). Using c₁/c₂ directly (without
+        # the e-step) overestimates the variance by ~a₁², deflating D ~a₁-fold.
+        e1 = c1 / a1
+        e2 = c2 / (a1 * a1 + a2)
+        var = e1 * S + e2 * S * (S - 1)
         
         if var <= 0:
             tajima_d_values[w_idx] = np.nan
@@ -1125,19 +1209,8 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1157,7 +1230,7 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         window_max_n = 0
         for i in range(len(window_variant_matrix)):
             site_n = 0
-            for j in range(n_samples):
+            for j in range(n_haplotypes):
                 if window_variant_matrix[i, j] != -1:
                     site_n += 1
             if site_n > window_max_n:
@@ -1197,15 +1270,18 @@ def fu_li_d(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             numerator = S / a1 - singleton_count
         
         # Calculate variance using window_max_n
-        # From Walsh & Lynch 2018, Equation 9.26a-b (page 305):
-        # Var(D*) = √(α*S + β*S(S-1))
-        var = u_d_star * S + v_d_star * S * (S - 1)
-        
+        # Folded D*: Var = α*·S + β*·S(S-1)  (Walsh & Lynch 9.26, b_n = a₂)
+        # Unfolded D: distinct components (Fu & Li 1993 / Simonsen 1995);
+        # numerator here is θ-scaled (S/a₁ - ζ₁), so divide Var by a₁².
+        if folded:
+            scale = (window_max_n - 1.0) / (window_max_n * a1)
+            var = (u_d_star * S + v_d_star * S * S) * scale * scale
+        else:
+            u_d, v_d = calculate_v_d_unfolded(window_max_n, a1, a2)
+            var = (u_d * S + v_d * S * S) / (a1 * a1)
+
         if var <= 0:
-            if S == 1:
-                fu_li_d_values[w_idx] = numerator / np.sqrt(abs(u_d_star))
-            else:
-                fu_li_d_values[w_idx] = np.nan
+            fu_li_d_values[w_idx] = np.nan
         else:
             fu_li_d_values[w_idx] = numerator / np.sqrt(var)
     
@@ -1262,19 +1338,8 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1294,7 +1359,7 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
         window_max_n = 0
         for i in range(len(window_variant_matrix)):
             site_n = 0
-            for j in range(n_samples):
+            for j in range(n_haplotypes):
                 if window_variant_matrix[i, j] != -1:
                     site_n += 1
             if site_n > window_max_n:
@@ -1337,15 +1402,17 @@ def fu_li_f(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: bool =
             numerator = pi - singleton_count
         
         # Calculate variance using window harmonic numbers
-        # From Walsh & Lynch 2018, Equation 9.26d-e (page 305):
-        # Var(F*) = √(α_F*S + β_F*S(S-1))
-        var = u_f_star * S + v_f_star * S * (S - 1)
-        
+        # Folded F*: Var = α_F·S + β_F·S(S-1)  (Walsh & Lynch 9.26, b_n = a₂)
+        # Unfolded F: distinct components (Fu & Li 1993 / Simonsen 1995),
+        # numerator (π - ζ₁) is already in count units: Var = u_F·S + v_F·S².
+        if folded:
+            var = u_f_star * S + v_f_star * S * (S - 1)
+        else:
+            u_f, v_f = calculate_v_f_unfolded(window_max_n, a1, a2)
+            var = u_f * S + v_f * S * S
+
         if var <= 0:
-            if S == 1:
-                fu_li_f_values[w_idx] = numerator / np.sqrt(abs(u_f_star))
-            else:
-                fu_li_f_values[w_idx] = np.nan
+            fu_li_f_values[w_idx] = np.nan
         else:
             fu_li_f_values[w_idx] = numerator / np.sqrt(var)
     
@@ -1428,19 +1495,8 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1461,7 +1517,7 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         window_max_n = 0
         for i in range(len(window_variant_matrix)):
             site_n = 0
-            for j in range(n_samples):
+            for j in range(n_haplotypes):
                 if window_variant_matrix[i, j] != -1:
                     site_n += 1
             if site_n > window_max_n:
@@ -1499,12 +1555,10 @@ def zeng_e(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset:
         
         # Calculate variance of E
         # From Walsh & Lynch 2018, Equation 9.28c (page 307):
-        # Var(θ_L - θ_W) uses scaled theta from Equation 9.21b (page 301):
-        # θ → S/a₁ and θ² → S(S-1)/(a₁² + b₁)
-        # This is DIFFERENT from Tajima's D which uses S directly
-        b1 = calculate_b1(window_max_n)
+        # θ → S/a₁ and θ² → S(S-1)/(a₁² + a₂)  (unbiased θ² estimator;
+        # b_n in W&L 9.21b is Σ1/i² = a₂, not Tajima's b₁)
         theta_for_var = S / a1
-        theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
+        theta_sq_for_var = S * (S - 1) / (a1 * a1 + bn)
         var_e = term1 * theta_for_var + term2 * theta_sq_for_var
         
         if var_e <= 0:
@@ -1552,19 +1606,8 @@ def singletons(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: boo
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
 
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1618,18 +1661,10 @@ def windowed_sfs(ds: xr.Dataset, call_genotype: str = "call_genotype", folded: b
         (windows, sfs_bin) and coordinate sfs_bin = 1, 2, ... n_bins.
     """
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
 
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    for i in range(n_variants):
-        for j in range(n_samples):
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
-
-    n_bins = (n_samples // 2) if folded else (n_samples - 1)
+    n_bins = (n_haplotypes // 2) if folded else (n_haplotypes - 1)
     if n_bins == 0:
         return ds.copy()
 
@@ -1700,19 +1735,8 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
     """
     # Convert genotypes to variant matrix format
     genotypes = ds[call_genotype].values
-    n_variants, n_samples, ploidy = genotypes.shape
-    
-    # Convert to binary matrix
-    variant_matrix = np.zeros((n_variants, n_samples), dtype=np.int8)
-    
-    for i in range(n_variants):
-        for j in range(n_samples):
-            # Check for missing data first
-            if np.any(genotypes[i, j, :] == -1):
-                variant_matrix[i, j] = -1  # Mark as missing
-            else:
-                allele_sum = np.sum(genotypes[i, j, :])
-                variant_matrix[i, j] = int(allele_sum > ploidy // 2)
+    variant_matrix = _genotypes_to_haplotype_matrix(genotypes)
+    n_variants, n_haplotypes = variant_matrix.shape
     
     # Get window information (windows are always defined)
     n_windows = len(ds.windows)
@@ -1733,7 +1757,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
         window_max_n = 0
         for i in range(len(window_variant_matrix)):
             site_n = 0
-            for j in range(n_samples):
+            for j in range(n_haplotypes):
                 if window_variant_matrix[i, j] != -1:
                     site_n += 1
             if site_n > window_max_n:
@@ -1757,16 +1781,16 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             continue
             
         pi = calculate_pi(window_variant_matrix)
-        theta_h_val = calculate_theta_h(sfs, window_max_n)
-        
-        # Calculate variance using window harmonic numbers
-        # From Walsh & Lynch 2018, Equation 9.27c (page 306):
-        # Var(θ_π - θ_H) uses scaled theta from Equation 9.21b (page 301):
-        # θ → S/a₁ and θ² → S(S-1)/(a₁² + b₁)
-        # This is DIFFERENT from Tajima's D which uses S directly
-        b1 = calculate_b1(window_max_n)
+        theta_l_val = calculate_theta_l(sfs, window_max_n)
+
+        # Normalized H (Zeng et al. 2006, eq. 11; Walsh & Lynch 9.27):
+        # H = (θ_π - θ_L) / sqrt(u_H·θ + v_H·θ²) — the u_H/v_H components are
+        # the variance of (θ_π - θ_L), so the numerator must use θ_L, not θ_H
+        # (θ_π - θ_H = 2(θ_π - θ_L)).
+        # θ → S/a₁ and θ² → S(S-1)/(a₁² + a₂)  (unbiased θ² estimator;
+        # b_n in W&L 9.21b is Σ1/i² = a₂, not Tajima's b₁/b₂)
         theta_for_var = S / a1
-        theta_sq_for_var = S * (S - 1) / (a1 * a1 + b1)
+        theta_sq_for_var = S * (S - 1) / (a1 * a1 + a2)
         var_h = u_h * theta_for_var + v_h * theta_sq_for_var
         
         
@@ -1775,7 +1799,7 @@ def fay_wu_h(ds: xr.Dataset, call_genotype: str = "call_genotype") -> xr.Dataset
             # If negative, likely indicates numerical issues or edge case
             fay_wu_h_values[w_idx] = np.nan
         else:
-            fay_wu_h_values[w_idx] = (pi - theta_h_val) / np.sqrt(var_h)
+            fay_wu_h_values[w_idx] = (pi - theta_l_val) / np.sqrt(var_h)
     
     # Create output dataset
     result = ds.copy()

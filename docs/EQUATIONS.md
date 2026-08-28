@@ -133,17 +133,21 @@ These statistics test for deviations from neutral evolution by comparing differe
 
 $$D = \frac{\theta_\pi - \theta_w}{\sqrt{\text{Var}(\theta_\pi - \theta_w)}}$$
 
-**Variance**:
+**Variance** (Tajima 1989; note the $e$-step — using $c_1, c_2$ directly
+overestimates the variance by $\sim a_1^2$ and deflates $D$ by $\sim a_1$):
 
-$$\text{Var}(\theta_\pi - \theta_w) = c_1 S + c_2 S(S-1)$$
+$$\text{Var}(\theta_\pi - \theta_w) = e_1 S + e_2 S(S-1)$$
 
 where:
 
-$$c_1 = b_1 - \frac{1}{a_1}$$
+$$c_1 = b_1 - \frac{1}{a_1}, \quad c_2 = b_2 - \frac{n+2}{a_1 n} + \frac{a_2}{a_1^2}$$
 
-$$c_2 = b_2 - \frac{n+2}{a_1 n} + \frac{a_2}{a_1^2}$$
+$$e_1 = \frac{c_1}{a_1}, \quad e_2 = \frac{c_2}{a_1^2 + a_2}$$
 
-**Reference**: Walsh & Lynch (2018), Equation 9.8; Tajima (1989); Wakeley (2009), Equation 4.35
+(Here $b_1, b_2$ are Tajima's polynomial coefficients — this is the only
+statistic in which they appear.)
+
+**Reference**: Tajima (1989); Walsh & Lynch (2018), Equation 9.8; Wakeley (2009), Equation 4.35
 
 ---
 
@@ -151,21 +155,25 @@ $$c_2 = b_2 - \frac{n+2}{a_1 n} + \frac{a_2}{a_1^2}$$
 
 $$D^* = \frac{\frac{S}{a_1} - \frac{n-1}{n}\eta_1}{\sqrt{\text{Var}(D^*)}}$$
 
-**Variance**:
+**Variance** (Fu & Li 1993 with the Simonsen et al. 1995 correction, as in
+libsequence/DnaSP; in mutation-count units the numerator
+$\frac{n}{n-1}S - a_1\eta_1$ has variance $u_{D^*} S + v_{D^*} S^2$, and the
+$\theta$-scaled numerator above multiplies this by $\left(\frac{n-1}{n a_1}\right)^2$):
 
-$$\text{Var}(D^*) = \alpha^* S + \beta^* S(S-1)$$
+$$c_n = \frac{2(n a_1 - 2(n-1))}{(n-1)(n-2)}$$
 
-where:
+$$d_n = c_n + \frac{n-2}{(n-1)^2} + \frac{2}{n-1}\left(\frac{3}{2} - \frac{2a_{n+1} - 3}{n-2} - \frac{1}{n}\right)$$
 
-$$c_n = \frac{n+1}{n} - \frac{1}{a_1}$$
+$$v_{D^*} = \frac{\left(\frac{n}{n-1}\right)^2 b_n + a_1^2 d_n - 2\frac{n a_1 (a_1+1)}{(n-1)^2}}{a_1^2 + b_n}$$
 
-$$d_n = \frac{b_2}{a_1^2} - \frac{2}{n}\left(1 + \frac{1}{a_1} + \frac{a_1}{n}\right) - \frac{1}{n^2}$$
+$$u_{D^*} = \frac{n}{n-1}\left(a_1 - \frac{n}{n-1}\right) - v_{D^*}$$
 
-$$\beta^* = \frac{1}{a_1^2 + b_2} \cdot d_n$$
+with $b_n = a_2 = \sum 1/i^2$ (**not** Tajima's $b_2$ polynomial — substituting
+Tajima's $b_2$ makes $v_{D^*}$ negative, so Var goes negative for large $S$).
+An earlier transcription used Walsh & Lynch 9.26's $\alpha^*/\beta^*$ form,
+which failed neutral-coalescent calibration (sd of $D^* \approx 1.5$–$2.2$).
 
-$$\alpha^* = \frac{1}{a_1} \cdot c_n - \beta^*$$
-
-**Reference**: Walsh & Lynch (2018), Equation 9.26b; Fu & Li (1993)
+**Reference**: Fu & Li (1993); Simonsen et al. (1995)
 
 ---
 
@@ -175,9 +183,15 @@ $$\alpha^* = \frac{1}{a_1} \cdot c_n - \beta^*$$
 
 $$D = \frac{\frac{S}{a_1} - \zeta_1}{\sqrt{\text{Var}(D)}}$$
 
-Uses same variance formula as $D^*$ but with derived singleton count $\zeta_1$.
+Has its **own** variance components (distinct from $D^*$'s). In count units,
+$S - a_1\zeta_1$ has variance $u_D S + v_D S^2$ with
 
-**Reference**: Walsh & Lynch (2018), Equation 9.26c; Fu & Li (1993)
+$$v_D = 1 + \frac{a_1^2}{a_2 + a_1^2}\left(c_n - \frac{n+1}{n-1}\right), \quad u_D = a_1 - 1 - v_D$$
+
+($c_n$ as in the $D^*$ section). The $\theta$-scaled numerator above divides
+this variance by $a_1^2$.
+
+**Reference**: Fu & Li (1993); Simonsen et al. (1995)
 
 ---
 
@@ -191,7 +205,9 @@ $$\text{Var}(F^*) = \alpha_F S + \beta_F S(S-1)$$
 
 where:
 
-$$\beta_F = \frac{1}{a_1^2 + b_2} \left[\frac{2n^3 + 110n^2 - 255n + 153}{9n^2(n-1)} + \frac{2(n-1)a_1}{n^2} - \frac{8b_2}{n}\right]$$
+$$\beta_F = \frac{1}{a_1^2 + b_n} \left[\frac{2n^3 + 110n^2 - 255n + 153}{9n^2(n-1)} + \frac{2(n-1)a_1}{n^2} - \frac{8b_n}{n}\right]$$
+
+with $b_n = a_2 = \sum 1/i^2$ (**not** Tajima's $b_2$ polynomial).
 
 $$\alpha_F = \frac{1}{a_1} \left[\frac{4n^2 + 19n + 3 - 12(n+1)a_{n+1}}{3n(n-1)}\right] - \beta_F$$
 
@@ -205,9 +221,14 @@ $$\alpha_F = \frac{1}{a_1} \left[\frac{4n^2 + 19n + 3 - 12(n+1)a_{n+1}}{3n(n-1)}
 
 $$F = \frac{\theta_\pi - \zeta_1}{\sqrt{\text{Var}(F)}}$$
 
-Uses same variance formula as $F^*$ but with derived singleton count $\zeta_1$.
+Has its **own** variance components (distinct from $F^*$'s):
+$\text{Var}(\pi - \zeta_1) = u_F S + v_F S^2$ with
 
-**Reference**: Walsh & Lynch (2018), Equation 9.26f; Fu & Li (1993)
+$$v_F = \frac{c_n + \frac{2(n^2+n+3)}{9n(n-1)} - \frac{2}{n-1}}{a_1^2 + a_2}$$
+
+$$u_F = \frac{1 + \frac{n+1}{3(n-1)} - \frac{4(n+2)}{(n+1)(n-1)}\left(a_{n+1} - \frac{2n}{n+1}\right)}{a_1} - v_F$$
+
+**Reference**: Fu & Li (1993); Simonsen et al. (1995)
 
 ---
 
@@ -215,9 +236,9 @@ Uses same variance formula as $F^*$ but with derived singleton count $\zeta_1$.
 
 $$E = \frac{\theta_L - \theta_w}{\sqrt{\text{Var}(\theta_L - \theta_w)}}$$
 
-**Variance** (using scaled $\theta$ from Equation 9.21b):
+**Variance** (using the unbiased estimators; $b_n = a_2$, **not** Tajima's $b_1$):
 
-$$\theta = \frac{S}{a_1}, \quad \theta^2 = \frac{S(S-1)}{a_1^2 + b_1}$$
+$$\theta = \frac{S}{a_1}, \quad \theta^2 = \frac{S(S-1)}{a_1^2 + a_2}$$
 
 $$\text{Var}(\theta_L - \theta_w) = \left[\frac{n}{2(n-1)} - \frac{1}{a_n}\right]\theta + \left[\frac{b_n}{a_n^2} + 2\left(\frac{n}{n-1}\right)^2 b_n - \frac{2(nb_n - n + 1)}{(n-1)a_n} - \frac{3n+1}{n-1}\right]\theta^2$$
 
@@ -225,15 +246,20 @@ $$\text{Var}(\theta_L - \theta_w) = \left[\frac{n}{2(n-1)} - \frac{1}{a_n}\right
 
 ---
 
-### 7. Fay and Wu's H
+### 7. Fay and Wu's H (normalized, Zeng et al. 2006)
 
-$$H = \frac{\theta_\pi - \theta_h}{\sqrt{\text{Var}(\theta_\pi - \theta_h)}}$$
+$$H = \frac{\theta_\pi - \theta_L}{\sqrt{\text{Var}(\theta_\pi - \theta_L)}}$$
 
-**Variance** (using scaled $\theta$ from Equation 9.21b):
+The $u_H/v_H$ components below are the variance of $(\theta_\pi - \theta_L)$,
+so the numerator must use $\theta_L$ — note the identity
+$\theta_\pi - \theta_h = 2(\theta_\pi - \theta_L)$, so pairing $\theta_h$ with
+this variance mis-scales the statistic.
 
-$$\theta = \frac{S}{a_1}, \quad \theta^2 = \frac{S(S-1)}{a_1^2 + b_1}$$
+**Variance** (using the unbiased estimators; $b_n = a_2$, **not** Tajima's $b_1$):
 
-$$\text{Var}(\theta_\pi - \theta_h) = u_H \theta + v_H \theta^2$$
+$$\theta = \frac{S}{a_1}, \quad \theta^2 = \frac{S(S-1)}{a_1^2 + a_2}$$
+
+$$\text{Var}(\theta_\pi - \theta_L) = u_H \theta + v_H \theta^2$$
 
 where:
 
