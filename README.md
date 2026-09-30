@@ -1,13 +1,11 @@
 # pgstats - Population Genetics Statistics Toolkit
 
-A comprehensive toolkit for calculating population genetics statistics from genomic data. Built on [sgkit](https://github.com/pystatgen/sgkit).
-
 ## Installation
 
 ### Requirements
 
 - Python >=3.8, <3.13
-- Dependencies: sgkit, numba, numpy, xarray, zarr, scipy, pandas, dask, pyranges, bio2zarr
+- Dependencies: numba, numpy, xarray, zarr, scipy, pandas, dask, pyranges, bio2zarr
 
 ### From Source
 
