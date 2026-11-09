@@ -546,3 +546,87 @@ class TestLdDecay:
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
+
+
+class TestHaplotypeReconstruction:
+    """Regression tests for estimate_haplotypes_from_phased_data.
+
+    A previous version misread sgkit allele indices as 0/1/2 genotype codes and
+    forced the first haplotype of every sample to all-reference, so every window
+    reported a haplotype at frequency 0.5.
+    """
+
+    def _make_dataset(self):
+        import xarray as xr
+        # 3 variants x 3 diploid samples, phased. Haplotypes (columns):
+        #   s0h0=000  s0h1=110  s1h0=000  s1h1=101  s2h0=111  s2h1=111
+        # Unique haplotype counts: 000:2, 110:1, 101:1, 111:2
+        call_genotype = np.array(
+            [
+                [[0, 1], [0, 1], [1, 1]],
+                [[0, 1], [0, 0], [1, 1]],
+                [[0, 0], [0, 1], [1, 1]],
+            ],
+            dtype=np.int8,
+        )
+        return xr.Dataset(
+            {
+                "call_genotype": (["variants", "samples", "ploidy"], call_genotype),
+                "variant_position": (["variants"], np.array([100, 200, 300])),
+                "variant_contig": (["variants"], np.zeros(3, dtype=int)),
+                "window_start_idx": ("windows", np.array([0], dtype=np.int64)),
+                "window_stop_idx": ("windows", np.array([3], dtype=np.int64)),
+            },
+            coords={
+                "variants": np.arange(3),
+                "samples": np.arange(3),
+                "ploidy": np.arange(2),
+                "windows": np.array([0]),
+            },
+        )
+
+    def test_alleles_are_copied_through_unchanged(self):
+        from pgstats.stats.haplotype_statistics import estimate_haplotypes_from_phased_data
+        g = np.array(
+            [[[0, 1], [1, 1], [-1, 0]],
+             [[1, 0], [0, 2], [1, 1]]],
+            dtype=np.int8,
+        )
+        h = estimate_haplotypes_from_phased_data(g)
+        expected = np.array([[0, 1, 1, 1, -1, 0],
+                             [1, 0, 0, 2, 1, 1]], dtype=np.int8)
+        np.testing.assert_array_equal(h, expected)
+
+    def test_first_haplotype_not_forced_to_reference(self):
+        from pgstats.stats.haplotype_statistics import estimate_haplotypes_from_phased_data
+        rng = np.random.default_rng(0)
+        g = rng.integers(0, 2, size=(50, 10, 2)).astype(np.int8)
+        h = estimate_haplotypes_from_phased_data(g)
+        # Haplotype 0 of each sample must carry the alt alleles it was given.
+        for s in range(10):
+            np.testing.assert_array_equal(h[:, 2 * s], g[:, s, 0])
+            np.testing.assert_array_equal(h[:, 2 * s + 1], g[:, s, 1])
+
+    def test_haplotype_diversity_hand_computed(self, monkeypatch, tmp_path):
+        from pgstats.stats.haplotype_statistics import haplotype_diversity
+        monkeypatch.setenv("PGSTATS_DEBUG_FILE", str(tmp_path / "dbg.txt"))
+        out = haplotype_diversity(self._make_dataset())
+        # freqs 2/6, 1/6, 1/6, 2/6 -> sum f^2 = 10/36; H = (1 - 10/36) * 6/5
+        expected = (1 - 10 / 36) * 6 / 5
+        assert abs(float(out["haplotype_diversity"].values[0]) - expected) < 1e-12
+        # The old bug gave (1 - 12/36) * 6/5 = 0.8; make sure we are not there.
+        assert abs(float(out["haplotype_diversity"].values[0]) - 0.8) > 1e-6
+
+    def test_garud_h_hand_computed(self, monkeypatch, tmp_path):
+        from pgstats.stats.haplotype_statistics import garud_h_statistics
+        monkeypatch.setenv("PGSTATS_DEBUG_FILE", str(tmp_path / "dbg.txt"))
+        out = garud_h_statistics(self._make_dataset())
+        # sorted freqs: 1/3, 1/3, 1/6, 1/6
+        h1 = 10 / 36
+        h12 = (2 / 3) ** 2 + 2 * (1 / 6) ** 2
+        h123 = (5 / 6) ** 2 + (1 / 6) ** 2
+        h2_h1 = (h1 - (1 / 3) ** 2) / h1
+        assert abs(float(out["garud_h1"].values[0]) - h1) < 1e-12
+        assert abs(float(out["garud_h12"].values[0]) - h12) < 1e-12
+        assert abs(float(out["garud_h123"].values[0]) - h123) < 1e-12
+        assert abs(float(out["garud_h2_h1"].values[0]) - h2_h1) < 1e-12

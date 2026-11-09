@@ -46,44 +46,32 @@ def hash_haplotype(haplotype: np.ndarray, ignore_missing: bool = False) -> int:
     return hash_value
 
 
-@numba.njit(nogil=True, fastmath=False)
 def estimate_haplotypes_from_phased_data(genotypes: np.ndarray) -> np.ndarray:
     """
-    Estimate haplotypes assuming data is already phased.
-    
-    This approach treats each chromosome separately, similar to sgkit's
-    implementation. It works well when the data is already phased or
-    when phase ambiguity is not critical for the analysis.
-    
+    Flatten phased genotype calls into a haplotype matrix.
+
+    sgkit stores ``call_genotype`` as allele indices with shape
+    (n_variants, n_samples, ploidy): 0 = reference allele, 1.. = alternate
+    allele(s), -1 = missing. Assuming the data are phased, each ploidy slot
+    is one haplotype, so haplotype ``sample_idx * ploidy + chrom_idx`` is just
+    the allele column copied through unchanged.
+
+    Note: a previous version of this function misread the allele indices as
+    0/1/2 genotype codes and replaced every allele of 1 with the chromosome
+    index, which forced the first haplotype of every sample to all-reference.
+    Do not reintroduce that logic.
+
     Args:
-        genotypes: Array of shape (n_variants, n_samples, ploidy) with genotype calls
-                  0 = homozygous reference, 1 = heterozygous, 2 = homozygous alternate
-                  -1 = missing data
-    
+        genotypes: Array of shape (n_variants, n_samples, ploidy) with allele
+                   indices (-1 for missing).
+
     Returns:
-        Array of shape (n_variants, n_haplotypes) where n_haplotypes = n_samples * ploidy
+        Array of shape (n_variants, n_samples * ploidy), dtype int8, with the
+        same allele indices (-1 preserved for missing).
     """
     n_variants, n_samples, ploidy = genotypes.shape
-    n_haplotypes = n_samples * ploidy
-    
-    haplotypes = np.zeros((n_variants, n_haplotypes), dtype=np.int8)
-    
-    for var_idx in range(n_variants):
-        for sample_idx in range(n_samples):
-            for chrom_idx in range(ploidy):
-                haplotype_idx = sample_idx * ploidy + chrom_idx
-                genotype = genotypes[var_idx, sample_idx, chrom_idx]
-                
-                if genotype == -1:  # Missing data
-                    haplotypes[var_idx, haplotype_idx] = -1
-                elif genotype == 0:  # Homozygous reference
-                    haplotypes[var_idx, haplotype_idx] = 0
-                elif genotype == 2:  # Homozygous alternate
-                    haplotypes[var_idx, haplotype_idx] = 1
-                else:  # Heterozygous - assign based on chromosome
-                    haplotypes[var_idx, haplotype_idx] = chrom_idx  # 0 or 1
-    
-    return haplotypes
+    haplotypes = genotypes.reshape(n_variants, n_samples * ploidy)
+    return np.ascontiguousarray(haplotypes, dtype=np.int8)
 
 
 @numba.njit(nogil=True, fastmath=False)
