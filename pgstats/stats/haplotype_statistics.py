@@ -570,6 +570,31 @@ def calculate_garud_h_statistics(haplotypes: np.ndarray,
     return np.array([h1, h12, h123, h2_h1])
 
 
+def _open_debug_file(debug_file: str, header: str) -> None:
+    """Create the debug TSV with ``header`` if needed; warn if an existing file has a different header.
+
+    Debug files are append-only so that several runs (or several regions of
+    one run) accumulate in one place. If the file was written by an older
+    version with a different column layout, appending would silently
+    misalign columns, so say so.
+    """
+    import os
+    import warnings
+    if not os.path.exists(debug_file) or os.path.getsize(debug_file) == 0:
+        with open(debug_file, 'w') as f:
+            f.write(header)
+        return
+    with open(debug_file, 'r') as f:
+        first = f.readline()
+    if first != header:
+        warnings.warn(
+            f"{debug_file} exists with a different header (probably written by an older pgstats "
+            f"version); new rows are being appended with the current column layout. Delete or "
+            f"rename the old file to avoid mixed layouts.",
+            UserWarning,
+        )
+
+
 # =============================================================================
 # HIGH-LEVEL HAPLOTYPE FUNCTIONS (USER-FACING)
 # =============================================================================
@@ -615,10 +640,13 @@ def haplotype_diversity(ds: xr.Dataset,
     positions = ds.variant_position.values
     window_start_positions = []
     window_stop_positions = []
-    if 'window_start' in ds.coords:
+    window_contigs = []
+    if 'window_start' in ds.coords or 'window_start' in ds.data_vars:
         window_start_positions = ds.window_start.values
-    if 'window_stop' in ds.coords:
+    if 'window_stop' in ds.coords or 'window_stop' in ds.data_vars:
         window_stop_positions = ds.window_stop.values
+    if 'window_contig' in ds.coords or 'window_contig' in ds.data_vars:
+        window_contigs = ds.window_contig.values
     
     # Calculate haplotype diversity for each window
     diversity_values = np.zeros(n_windows)
@@ -630,12 +658,11 @@ def haplotype_diversity(ds: xr.Dataset,
     run_id = os.environ.get('PGSTATS_RUN_ID', datetime.now().strftime('%Y%m%d_%H%M%S'))
     
     # Write header only if file doesn't exist (TSV format for easy pandas import)
-    file_exists = os.path.exists(debug_file)
-    with open(debug_file, 'a') as f:
-        if not file_exists:
-            f.write("Run_ID\tWindow\tWin_Size\tN_Var\tN_Hap\tMissing_Rate\tN_Var_Miss\tN_Hap_Miss\t"
-                    "N_Unique\tN_Unique_Ig\tN_Sing\tN_Sing_Ig\tDiversity\tDiversity_Ig\t"
-                    "Sum_Freq2\tSum_Freq2_Ig\tTop1_Freq\tTop2_Freq\tTop3_Freq\n")
+    header = ("Run_ID\tWindow\tContig\tWin_Start\tWin_Stop\tWin_Size\tN_Var\tN_Hap\tMissing_Rate\t"
+              "N_Var_Miss\tN_Hap_Miss\t"
+              "N_Unique\tN_Unique_Ig\tN_Sing\tN_Sing_Ig\tDiversity\tDiversity_Ig\t"
+              "Sum_Freq2\tSum_Freq2_Ig\tTop1_Freq\tTop2_Freq\tTop3_Freq\n")
+    _open_debug_file(debug_file, header)
     
     for w_idx in range(n_windows):
         window_start = window_starts[w_idx]
@@ -693,15 +720,20 @@ def haplotype_diversity(ds: xr.Dataset,
         frequencies_true_sorted = np.sort(frequencies_true)[::-1]
         top3_freq_true = frequencies_true_sorted[:3] if len(frequencies_true_sorted) >= 3 else list(frequencies_true_sorted) + [0.0] * (3 - len(frequencies_true_sorted))
         
-        # Get window size in bp
+        # Window coordinates (same values as window_start / window_stop in the
+        # results table, so debug rows can be joined directly to the output)
         if len(window_start_positions) > w_idx and len(window_stop_positions) > w_idx:
-            win_size_bp = window_stop_positions[w_idx] - window_start_positions[w_idx] + 1
+            win_start = int(window_start_positions[w_idx])
+            win_stop = int(window_stop_positions[w_idx])
+            win_size_bp = win_stop - win_start + 1
         else:
-            win_size_bp = 0
+            win_start, win_stop, win_size_bp = -1, -1, 0
+        win_contig = int(window_contigs[w_idx]) if len(window_contigs) > w_idx else -1
         
         # Write debug info to file (TSV format)
         with open(debug_file, 'a') as f:
-            f.write(f"{run_id}\t{w_idx}\t{win_size_bp}\t{n_variants_win}\t{n_haplotypes_win}\t{missing_rate:.6f}\t"
+            f.write(f"{run_id}\t{w_idx}\t{win_contig}\t{win_start}\t{win_stop}\t{win_size_bp}\t"
+                   f"{n_variants_win}\t{n_haplotypes_win}\t{missing_rate:.6f}\t"
                    f"{variants_with_missing}\t{haplotypes_with_missing}\t"
                    f"{n_unique_false}\t{n_unique_true}\t{n_singletons_false}\t{n_singletons_true}\t"
                    f"{diversity_false:.6f}\t{diversity_true:.6f}\t{sum_freq_sq_false:.6f}\t{sum_freq_sq_true:.6f}\t"
@@ -761,10 +793,13 @@ def garud_h_statistics(ds: xr.Dataset,
     positions = ds.variant_position.values
     window_start_positions = []
     window_stop_positions = []
-    if 'window_start' in ds.coords:
+    window_contigs = []
+    if 'window_start' in ds.coords or 'window_start' in ds.data_vars:
         window_start_positions = ds.window_start.values
-    if 'window_stop' in ds.coords:
+    if 'window_stop' in ds.coords or 'window_stop' in ds.data_vars:
         window_stop_positions = ds.window_stop.values
+    if 'window_contig' in ds.coords or 'window_contig' in ds.data_vars:
+        window_contigs = ds.window_contig.values
     
     # Calculate Garud H statistics for each window
     h1_values = np.zeros(n_windows)
@@ -779,13 +814,12 @@ def garud_h_statistics(ds: xr.Dataset,
     run_id = os.environ.get('PGSTATS_RUN_ID', datetime.now().strftime('%Y%m%d_%H%M%S'))
     
     # Write header only if file doesn't exist (TSV format for easy pandas import)
-    file_exists = os.path.exists(debug_file)
-    with open(debug_file, 'a') as f:
-        if not file_exists:
-            f.write("Run_ID\tWindow\tWin_Size\tN_Var\tN_Hap\tMissing_Rate\tN_Var_Miss\tN_Hap_Miss\t"
-                    "N_Unique\tN_Unique_Ig\tN_Sing\tN_Sing_Ig\t"
-                    "H1\tH1_Ig\tH12\tH12_Ig\tH123\tH123_Ig\tH2_H1\tH2_H1_Ig\t"
-                    "Top1_Freq\tTop2_Freq\tTop3_Freq\n")
+    header = ("Run_ID\tWindow\tContig\tWin_Start\tWin_Stop\tWin_Size\tN_Var\tN_Hap\tMissing_Rate\t"
+              "N_Var_Miss\tN_Hap_Miss\t"
+              "N_Unique\tN_Unique_Ig\tN_Sing\tN_Sing_Ig\t"
+              "H1\tH1_Ig\tH12\tH12_Ig\tH123\tH123_Ig\tH2_H1\tH2_H1_Ig\t"
+              "Top1_Freq\tTop2_Freq\tTop3_Freq\n")
+    _open_debug_file(debug_file, header)
     
     for w_idx in range(n_windows):
         window_start = window_starts[w_idx]
@@ -866,15 +900,20 @@ def garud_h_statistics(ds: xr.Dataset,
             stats_true = np.array([np.nan, np.nan, np.nan, np.nan])
             top3_freq_true = [0.0, 0.0, 0.0]
         
-        # Get window size in bp
+        # Window coordinates (same values as window_start / window_stop in the
+        # results table, so debug rows can be joined directly to the output)
         if len(window_start_positions) > w_idx and len(window_stop_positions) > w_idx:
-            win_size_bp = window_stop_positions[w_idx] - window_start_positions[w_idx] + 1
+            win_start = int(window_start_positions[w_idx])
+            win_stop = int(window_stop_positions[w_idx])
+            win_size_bp = win_stop - win_start + 1
         else:
-            win_size_bp = 0
+            win_start, win_stop, win_size_bp = -1, -1, 0
+        win_contig = int(window_contigs[w_idx]) if len(window_contigs) > w_idx else -1
         
         # Write debug info to file (TSV format)
         with open(debug_file, 'a') as f:
-            f.write(f"{run_id}\t{w_idx}\t{win_size_bp}\t{n_variants_win}\t{n_haplotypes_win}\t{missing_rate:.6f}\t"
+            f.write(f"{run_id}\t{w_idx}\t{win_contig}\t{win_start}\t{win_stop}\t{win_size_bp}\t"
+                   f"{n_variants_win}\t{n_haplotypes_win}\t{missing_rate:.6f}\t"
                    f"{variants_with_missing}\t{haplotypes_with_missing}\t"
                    f"{n_unique_false}\t{n_unique_true}\t{n_singletons_false}\t{n_singletons_true}\t"
                    f"{stats_false[0]:.6f}\t{stats_true[0]:.6f}\t{stats_false[1]:.6f}\t{stats_true[1]:.6f}\t"

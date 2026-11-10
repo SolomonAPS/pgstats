@@ -1135,31 +1135,22 @@ class GenomicDataset:
         result_dataset_before_norm = result_dataset.copy()
         result_dataset = self._normalize_theta_by_callable_sites(result_dataset)
         
-        # Now filter out windows where LD statistics failed to calculate
-        # (min_variants filtering already done before stat calculation)
-        
-        # Check LD statistics that should have valid values if calculation succeeded
-        ld_stats = {
-            'mean_D': 'average D (linkage disequilibrium)',
-            'mean_D_prime': "average D' (standardized D)",
-            'mean_r_squared': 'average r² (squared correlation)',
-            'max_r_squared': 'maximum r² in window'
-        }
-        valid_stats = []
-        
-        # Check each LD statistic
-        for var, description in ld_stats.items():
-            if var in result_dataset.data_vars:
-                
-                # Convert to float array to handle NaN checks
-                values = result_dataset[var].values.astype(float)
-                valid = ~np.isnan(values)  # True if LD calculation succeeded
-                valid_stats.append(valid)
-        
-        if valid_stats:
-            # Window is valid if any LD statistic was calculated successfully
-            valid_windows = np.any(valid_stats, axis=0)
-            result_dataset = result_dataset.isel(windows=valid_windows)
+        # Windows where no SNP pair had computable LD (e.g. every pair lost one
+        # site to missing data) keep their row with NaN in the LD columns. They
+        # used to be dropped here silently, which also discarded their SFS and
+        # haplotype statistics and left the output out of step with the
+        # haplotype debug files. Report the count instead.
+        ld_vars = [v for v in ('mean_D', 'mean_D_prime', 'mean_r_squared', 'max_r_squared')
+                   if v in result_dataset.data_vars]
+        if ld_vars:
+            ld_all_nan = np.all(
+                [np.isnan(result_dataset[v].values.astype(float)) for v in ld_vars], axis=0
+            )
+            n_ld_nan = int(np.sum(ld_all_nan))
+            if n_ld_nan > 0:
+                print(f"Note: {n_ld_nan} of {ld_all_nan.size} windows have no computable LD "
+                      f"(no SNP pair with both sites polymorphic among jointly called samples); "
+                      f"LD columns are NaN for those windows and the rows are kept.")
         
         # Print mean statistics
         # Extract only window-related variables to avoid memory issues

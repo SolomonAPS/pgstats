@@ -216,6 +216,39 @@ pgstats stats -v input.vcf.gz --output results.csv
 pgstats stats -vv input.vcf.gz --output results.csv
 ```
 
+### Haplotype debug files
+
+`haplotype_diversity` and the Garud statistics each append a per-window diagnostic
+table (TSV) to `haplotype_diversity_debug.txt` and `garud_stats_debug.txt` in the
+working directory. Override the path with `PGSTATS_DEBUG_FILE` and label the rows
+with `PGSTATS_RUN_ID` (default: a timestamp taken when each statistic starts, so a
+single run can produce more than one `Run_ID`, and `--regions-file` produces one per
+region with `Window` restarting at 0).
+
+The files are append-only: delete them before a run you want to inspect in isolation.
+Each row carries `Contig`, `Win_Start` and `Win_Stop`, which equal `window_contig`,
+`window_start` and `window_stop` in the results table, so the two can be joined directly:
+
+```python
+import pandas as pd
+out = pd.read_csv("results.csv")
+dbg = pd.read_csv("haplotype_diversity_debug.txt", sep="\t")
+merged = out.merge(dbg, left_on=["window_contig", "window_start", "window_stop"],
+                   right_on=["Contig", "Win_Start", "Win_Stop"], how="left")
+```
+
+`N_Var` counts VCF rows in the window, whereas `n_variants` in the results counts
+segregating sites among called samples; the two differ when missing data leaves a site
+monomorphic.
+
+### Windows without computable LD
+
+When LD statistics are requested, a window in which no SNP pair has both sites
+polymorphic among the jointly called samples (typical under heavy or haplotype-level
+missingness) gets `NaN` in the LD columns. The row is kept, so the window's SFS and
+haplotype statistics are still reported and row counts match across statistics and
+debug files. Earlier versions dropped such windows from the output without notice.
+
 ### Pipeline Integration
 
 Use pgstats in a pipeline:

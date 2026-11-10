@@ -432,3 +432,39 @@ class TestErrorHandling:
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
+
+
+class TestWindowsWithoutComputableLD:
+    """A window where every SNP pair has NaN LD must stay in the output with NaN LD columns."""
+
+    def _dataset(self):
+        ds = sg.simulate_genotype_call_dataset(n_variant=20, n_sample=6, missing_pct=0.0, seed=0)
+        ds["variant_position"] = ("variants", np.arange(1, 21, dtype=np.int64))
+        gt = ds.call_genotype.values.copy()
+        # Second window (variant indices ~10-19):
+        #   variant 9/10 called only in samples 0-2, variant 10 only in samples 3-5
+        #   -> no jointly called gamete; variants 12-19 monomorphic among the samples
+        #   where they are called -> every pair has undefined r2 / D'.
+        # Index 9 is included too so the construction holds whichever side of
+        # the boundary the windowing code puts position 10 on.
+        gt[9:20] = -1
+        gt[9, 0:3] = [[0, 1], [1, 0], [0, 0]]
+        gt[10, 3:6] = [[0, 1], [1, 1], [0, 0]]
+        gt[11:20, 0:3] = 0
+        ds["call_genotype"] = (("variants", "samples", "ploidy"), gt)
+        ds["call_genotype_mask"] = (("variants", "samples", "ploidy"), gt < 0)
+        return ds
+
+    def test_rows_kept_with_nan_ld(self):
+        genomic_ds = GenomicDataset(
+            data_source=self._dataset(),
+            callable_config=CallableSitesConfig(),
+            window_config=WindowConfig(window_size=10, step_size=10, min_variants=5),
+        )
+        genomic_ds.create_windows()
+        n_windows = len(genomic_ds.windowed_dataset.windows)
+        result = genomic_ds.calculate_windowed_stats(stats=["ld_r2", "tajima_d"])
+        assert len(result.windows) == n_windows == 2
+        r2 = result["mean_r_squared"].values.astype(float)
+        assert np.isnan(r2[1]) and not np.isnan(r2[0])
+        assert np.isfinite(result["tajima_d"].values.astype(float)).all()

@@ -656,3 +656,42 @@ class TestThetaH:
         # missing data reduces n for that site: derived 2 of 4 called -> 2*4/(4*3)
         mat = np.array([[1, 1, 0, 0, -1, -1]], dtype=np.int8)
         assert abs(calculate_theta_h_per_site(mat) - 8 / 12) < 1e-12
+
+
+class TestHaplotypeDebugFile:
+    """Debug rows must carry the window coordinates so they can be joined to the results table."""
+
+    def _ds(self):
+        import xarray as xr
+        base = TestHaplotypeReconstruction()._make_dataset()
+        return base.assign_coords(
+            window_start=("windows", np.array([100])),
+            window_stop=("windows", np.array([300])),
+            window_contig=("windows", np.array([2])),
+        )
+
+    def test_columns_and_values(self, monkeypatch, tmp_path):
+        import pandas as pd
+        from pgstats.stats.haplotype_statistics import haplotype_diversity, garud_h_statistics
+        for fn, extra in ((haplotype_diversity, "Diversity"), (garud_h_statistics, "H1")):
+            path = tmp_path / f"{extra}.tsv"
+            monkeypatch.setenv("PGSTATS_DEBUG_FILE", str(path))
+            monkeypatch.setenv("PGSTATS_RUN_ID", "t")
+            fn(self._ds())
+            dbg = pd.read_csv(path, sep="\t")
+            assert list(dbg.columns[:6]) == ["Run_ID", "Window", "Contig", "Win_Start", "Win_Stop", "Win_Size"]
+            assert extra in dbg.columns
+            row = dbg.iloc[0]
+            assert (row.Contig, row.Win_Start, row.Win_Stop, row.Win_Size) == (2, 100, 300, 201)
+            assert row.N_Var == 3 and row.N_Hap == 6 and row.N_Unique == 4
+
+    def test_warns_on_old_header(self, monkeypatch, tmp_path):
+        import warnings
+        from pgstats.stats.haplotype_statistics import haplotype_diversity
+        path = tmp_path / "old.tsv"
+        path.write_text("Run_ID\tWindow\tWin_Size\n")
+        monkeypatch.setenv("PGSTATS_DEBUG_FILE", str(path))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            haplotype_diversity(self._ds())
+        assert any("different header" in str(x.message) for x in w)
