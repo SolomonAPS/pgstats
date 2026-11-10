@@ -630,3 +630,29 @@ class TestHaplotypeReconstruction:
         assert abs(float(out["garud_h12"].values[0]) - h12) < 1e-12
         assert abs(float(out["garud_h123"].values[0]) - h123) < 1e-12
         assert abs(float(out["garud_h2_h1"].values[0]) - h2_h1) < 1e-12
+
+
+class TestThetaH:
+    """theta_H must carry Fay & Wu's factor of 2 so that E[theta_H] = theta."""
+
+    def test_per_site_kernel_matches_sfs_definition(self):
+        from pgstats.stats.sfs_statistics import calculate_theta_h_per_site
+        rng = np.random.default_rng(1)
+        n = 12
+        mat = (rng.random((200, n)) < rng.random((200, 1))).astype(np.int8)
+        counts = mat.sum(axis=1)
+        mat = mat[(counts > 0) & (counts < n)]
+        counts = mat.sum(axis=1)
+        i = np.arange(1, n)
+        xi = np.bincount(counts, minlength=n)[1:n]
+        expected = np.sum(2.0 * i**2 * xi) / (n * (n - 1))
+        assert abs(calculate_theta_h_per_site(mat) - expected) < 1e-10
+
+    def test_single_site_values(self):
+        from pgstats.stats.sfs_statistics import calculate_theta_h_per_site
+        # one site, derived count 3 of n=6: 2*9/(6*5) = 0.6 (not 0.3)
+        mat = np.array([[1, 1, 1, 0, 0, 0]], dtype=np.int8)
+        assert abs(calculate_theta_h_per_site(mat) - 0.6) < 1e-12
+        # missing data reduces n for that site: derived 2 of 4 called -> 2*4/(4*3)
+        mat = np.array([[1, 1, 0, 0, -1, -1]], dtype=np.int8)
+        assert abs(calculate_theta_h_per_site(mat) - 8 / 12) < 1e-12

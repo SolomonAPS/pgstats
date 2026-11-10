@@ -683,7 +683,7 @@ def calculate_theta_h(sfs: np.ndarray, n: int) -> float:
     """
     Calculate Fay and Wu's theta (θh).
     From Fay and Wu (2000), equation 2:
-    θh = sum(i²ξᵢ) / (n(n-1)) from i=1 to n-1
+    θh = sum(2·i²·ξᵢ) / (n(n-1)) from i=1 to n-1
     
     Args:
         sfs: Site frequency spectrum
@@ -708,7 +708,7 @@ def calculate_theta_h_per_site(variant_matrix: np.ndarray) -> float:
     """
     Calculate Fay and Wu's theta (θh) accounting for per-site missing data.
     From Fay and Wu (2000), equation 2:
-    θh = sum(i²ξᵢ) / (n(n-1)) from i=1 to n-1
+    θh = sum(2·i²·ξᵢ) / (n(n-1)) from i=1 to n-1
     
     Args:
         variant_matrix: numpy array where rows are positions and columns are samples
@@ -731,7 +731,9 @@ def calculate_theta_h_per_site(variant_matrix: np.ndarray) -> float:
                     derived_count += 1
         
         if non_missing > 1 and 1 <= derived_count <= non_missing - 1:
-            theta_h_site = (derived_count * derived_count) / (non_missing * (non_missing - 1))
+            # Fay & Wu (2000) eq. 2: theta_H = sum_i 2 i^2 xi_i / (n(n-1)); the factor 2
+            # is required for E[theta_H] = theta under neutrality.
+            theta_h_site = (2.0 * derived_count * derived_count) / (non_missing * (non_missing - 1))
             total_theta_h += theta_h_site
     
     return total_theta_h

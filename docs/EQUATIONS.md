@@ -322,20 +322,25 @@ $$r^2 = \frac{D^2}{p_A(1-p_A) \cdot p_B(1-p_B)}$$
 
 ### 4. Omega Statistic ($\omega$)
 
-For a set of SNPs, partition into left (L) and right (R) regions at each potential breakpoint $k$:
+For the $S$ SNPs in a window, each SNP $\ell = 2, \ldots, S-1$ (restricted to SNPs with
+minor allele count $> 1$) is tried as a breakpoint splitting the window into a left block
+$L$ of $\ell$ SNPs and a right block $R$ of $S-\ell$ SNPs:
 
-$$\omega_k = \frac{|\bar{r}^2_L - \bar{r}^2_R|}{|\bar{r}^2_{LR}|}$$
+$$\omega_\ell = \frac{\left[\binom{\ell}{2} + \binom{S-\ell}{2}\right]^{-1}\left(\sum_{i,j \in L} r^2_{ij} + \sum_{i,j \in R} r^2_{ij}\right)}{\left[\ell(S-\ell)\right]^{-1}\sum_{i \in L,\, j \in R} r^2_{ij}}$$
 
-where:
-- $\bar{r}^2_L$ = mean $r^2$ within left region
-- $\bar{r}^2_R$ = mean $r^2$ within right region  
-- $\bar{r}^2_{LR}$ = mean $r^2$ between left and right regions
+i.e. the mean $r^2$ of pairs within the two blocks divided by the mean $r^2$ of pairs
+spanning the breakpoint. Equivalently, with $C_{S,\ell} = \ell(S-\ell)\big/\left[\binom{\ell}{2} + \binom{S-\ell}{2}\right]$,
 
-The omega statistic is:
+$$\omega_\ell = C_{S,\ell}\,\frac{\sum_{L} r^2 + \sum_{R} r^2}{\sum_{LR} r^2}$$
 
-$$\omega = \max_k \omega_k$$
+The reported statistic is the maximum over breakpoints:
 
-**Reference**: Kim & Nielsen (2004)
+$$\omega = \max_\ell \omega_\ell$$
+
+A completed hard sweep leaves high LD on either side of the selected site but little LD
+across it, so $\omega$ is large.
+
+**Reference**: Kim & Nielsen (2004), Equation 8; Walsh & Lynch (2018), Equation 9.37
 
 ---
 
